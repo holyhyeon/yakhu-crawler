@@ -35,6 +35,9 @@ const detail = `
   <footer>footer 광고</footer>
 `;
 assert.match(extractBodyText(detail), /본문에 남긴 설명입니다/);
+const tenMedia = `<div class="print_area">${Array.from({ length: 10 }, (_, index) => `<img src="https://file1.bobaedream.co.kr/nsfw/example-${index + 10}.jpg">`).join('')}</div>`;
+assert.equal(extractMediaUrls(tenMedia, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014' }).length, 10);
+
 assert.doesNotMatch(extractBodyText(detail), /navigation|관련글|댓글|footer|광고/);
 assert.deepEqual(extractMediaUrls(detail, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014' }), [
   'https://file1.bobaedream.co.kr/nsfw/example-1.gif',
