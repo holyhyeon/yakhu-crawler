@@ -97,18 +97,31 @@ jobs:
             for (const tag of String(html || '').matchAll(/<(?:img|video|source|a)\b[^>]*>/gi)) {
               for (const m of tag[0].matchAll(/(?:src|data-src|data-original|href)=["']([^"']+)["']/gi)) {
                 const url = abs(m[1], base);
-                if (!url || /^(?:data:|javascript:)/i.test(url) || /mycar_photo_request|partner_photo|\/mycar\/|\/partner\/|no_image\.gif/i.test(url)) continue;
+                const lowerUrl = url.toLowerCase();
+                if (!url || /^(?:data:|javascript:)/i.test(url) || ['mycar_photo_request', 'partner_photo', '/mycar/', '/partner/', 'no_image.gif', '/board/level/', '/mobile/', 'image_load.php'].some((token) => lowerUrl.includes(token))) continue;
                 if (/logo|icon|avatar|emoji|favicon|banner|advert|sponsor|btn_|button/i.test(url)) continue;
                 if (/\.(?:jpe?g|png|gif|webp|avif|mp4|webm)(?:[?#]|$)/i.test(url) || /(?:upload|attach|image|img|media|files|photo|thumbnail)/i.test(url)) out.push(url);
               }
             }
             return [...new Set(out)].slice(0, 12);
           }
+          function extractContainer(source) {
+            const open = /<([a-z0-9]+)[^>]*(?:id|class)=["'][^"']*(?:print[_-]?area|conView)[^"']*["'][^>]*>/i.exec(source);
+            if (!open || open.index == null) return '';
+            const tag = open[1];
+            const tags = new RegExp('(?:<' + tag + '[^>]*>|</' + tag + '>)', 'gi');
+            let depth = 0;
+            let match;
+            while ((match = tags.exec(source))) {
+              if (match[0].startsWith('</')) depth--;
+              else if (!match[0].trimEnd().endsWith('/>')) depth++;
+              if (depth === 0) return source.slice(open.index, tags.lastIndex);
+            }
+            return '';
+          }
           function bodyText(html) {
             const source = String(html || '');
-            const focused = source.match(/<div\b[^>]*(?:id|class)=["'][^"']*print_area[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]
-              || source.match(/<div\b[^>]*(?:id|class)=["'][^"']*conView[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]
-              || source;
+            const focused = extractContainer(source) || source;
             return plain(focused).slice(0, 12000);
           }
           const NEGATIVE = ['미성년','청소년','10대','학생','여고생','교복','아동','소녀','소년','로리','몰카','도촬','불법촬영','유출','딥페이크','그림','일러스트','팬아트','창작','캐릭터','애니','애니메이션','만화','웹툰','게임','인게임','게임 스크린샷','게임 캐릭터','스킨','원화','콘셉트아트','코스튬 이미지','카톡','문자','메시지 캡처','채팅 캡처','커뮤니티 캡처','스크린샷','캡처','밈','짤방','디시콘','스티커','낙서','2D','탑툰'];
