@@ -1,0 +1,12 @@
+{
+  "name": "yakhu-crawler",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "engines": {"node": ">=22.13.0"},
+  "scripts": {
+    "crawl": "node src/index.mjs",
+    "check": "node --check src/index.mjs && node --check src/sources/inven.mjs && node --check src/ingest.mjs",
+    "test:fixture": "node src/sources/inven.test.mjs"
+  }
+}
