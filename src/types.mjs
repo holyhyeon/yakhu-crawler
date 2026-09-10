@@ -1,6 +1,6 @@
 /**
  * @typedef {Object} CollectedCandidate
- * @property {'inven'} source
+ * @property {'inven'|'bobaedream'} source
  * @property {string} sourcePostId
  * @property {string} sourceUrl
  * @property {string} title
