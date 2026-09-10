@@ -107,7 +107,8 @@ jobs:
             return [...new Set(out)].slice(0, 12);
           }
           function extractContainer(source) {
-            const open = /<([a-z0-9]+)[^>]*(?:id|class)=["'][^"']*(?:print[_-]?area|conView)[^"']*["'][^>]*>/i.exec(source);
+                      const open = /<([a-z0-9]+)\b[^>]*(?:id|class)=["'][^"']*print[_-]?area[^"']*["'][^>]*>/i.exec(source)
+            || /<([a-z0-9]+)\b[^>]*(?:id|class)=["'][^"']*conView[^"']*["'][^>]*>/i.exec(source);
             if (!open || open.index == null) return '';
             const tag = open[1];
             const tags = new RegExp('(?:<' + tag + '[^>]*>|</' + tag + '>)', 'gi');
