@@ -242,7 +242,7 @@ jobs:
               await sleep(DELAY); detailRequested++;
               const r = await get(post.url, post.url);
               if (r.status < 200 || r.status >= 300 || challenge(r.status, r.html)) { detailFailure++; return { ...post, bodyText: '', mediaUrls: [], publishedAt: post.listDate, label: 'NON_TARGET', reason: 'detail_unavailable', gate: { decision: 'reject', reason: 'detail_unavailable' } }; }
-              detailSuccess++; const body = bodyText(r.html); const media = mediaUrls(r.html, r.url); const publishedAt = parseDate(r.html) || post.listDate; const c = manualClassify(board, post.title, body, media.length); const g = qualityGate(post.title, 'bobaedream', body); return { ...post, bodyText: body, mediaUrls: media, publishedAt, ...c, gate: g };
+              detailSuccess++; const body = bodyText(r.html); const media = mediaUrls(r.html, r.url); const publishedAt = parseDate(r.html) || post.listDate; const c = manualClassify(board, post.title, '', media.length); const g = qualityGate(post.title, 'bobaedream', ''); return { ...post, bodyText: body, mediaUrls: media, publishedAt, ...c, gate: g };
             });
             const counts = { TARGET: 0, AMBIGUOUS: 0, NON_TARGET: 0 }; const gateCounts = { accept: 0, review: 0, reject: 0 }; const matrix = { TARGET: { accept: 0, review: 0, reject: 0 }, AMBIGUOUS: { accept: 0, review: 0, reject: 0 }, NON_TARGET: { accept: 0, review: 0, reject: 0 } };
             for (const row of rows) { counts[row.label]++; gateCounts[row.gate.decision]++; matrix[row.label][row.gate.decision]++; }
