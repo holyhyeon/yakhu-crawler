@@ -5,7 +5,7 @@ const PAGE_CAP = 2;
 const CANDIDATES_PER_PAGE = 15;
 const DETAIL_CONCURRENCY = 2;
 const DETAIL_DELAY_MS = 300;
-const MAX_MEDIA = 3;
+const MAX_MEDIA = 20;
 
 export class BobaedreamSourceError extends Error {
   constructor(code, message = code) {
