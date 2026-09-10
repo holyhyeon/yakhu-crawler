@@ -170,7 +170,7 @@ jobs:
               const headers = { 'user-agent': UA, range: 'bytes=0-31' }; if (includeReferer) headers.referer = referer;
               const r = await fetch(url, { method: 'GET', headers, redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT) });
               const type = r.headers.get('content-type') || ''; const ok = r.status >= 200 && r.status < 300 && /^(?:image|video)\//i.test(type); if (r.body) await r.body.cancel();
-              return { status: r.status, contentType: type, redirect: false, ok, sentReferer: includeReferer };
+              return { status: r.status, contentType: type, redirect: r.url !== url, ok, sentReferer: includeReferer };
             } catch (error) { return { status: 0, contentType: '', redirect: false, ok: false, sentReferer: includeReferer, error: error.message }; }
           }
           async function yieldBoard(board) {
