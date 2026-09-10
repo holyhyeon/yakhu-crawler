@@ -1,1 +1,0 @@
-qualityGate(post.title, 'bobaedream', '');
