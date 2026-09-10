@@ -53,7 +53,7 @@ jobs:
           const attr = (s, name) => { const marker = name + '='; const value = String(s || ''); const i = value.toLowerCase().indexOf(marker.toLowerCase()); if (i < 0) return ''; const tail = value.slice(i + marker.length).trimStart(); const quote = tail[0]; if (quote !== '"' && quote !== "'") return ''; const j = tail.indexOf(quote, 1); return j > 0 ? decode(tail.slice(1, j)) : ''; };
           const abs = (raw, base) => { try { return new URL(decode(raw), base).href; } catch { return null; } };
           const challenge = (status, html) => status === 401 || status === 403 || status === 429 || /captcha|cloudflare|ddos|security\s*check|접근\s*제한|성인\s*(?:인증|전용)|본인\s*인증|로그인\s*후/i.test((html.match(/<title[^>]*>[\s\S]*?<\/title>/i)?.[0] || '') + String(html || '').slice(0, 5000));
-          const authGate = (html) => /로그인\s*(?:후|필요)|성인\s*(?:인증|전용)|본인\s*인증|회원만|로그인\s*필요/i.test(String(html || '').slice(0, 12000));
+          const authGate = (html) => /(?:로그인(?:을|이)?\s*(?:해야|후(?:에)?\s*(?:이용|확인|열람)|필요)|회원\s*(?:전용|만)|성인\s*(?:인증|확인)\s*(?:이\s*)?(?:필요|후|완료)|19세\s*(?:이상\s*)?(?:인증|확인)\s*(?:이\s*)?(?:필요|후|완료))/i.test(plain(String(html || '').slice(0, 20000)));
           async function get(url, referer, extraHeaders = {}) {
             try {
               const headers = { 'user-agent': UA, 'accept-language': 'ko-KR,ko;q=0.9', ...extraHeaders };
@@ -147,11 +147,28 @@ jobs:
             const cfg = SOURCES[board];
             const r = await get(cfg.list, cfg.list);
             const html = /text\/html|application\/xhtml/i.test(r.contentType);
-            const boardPosts = html ? parsePosts(r.html, r.url, cfg).length : 0;
+            const listPosts = html ? parsePosts(r.html, r.url, cfg) : [];
+            const boardPosts = listPosts.length;
             const isChallenge = challenge(r.status, r.html);
-            const isAuth = authGate(r.html);
-            const status = isAuth ? 'NOT_ELIGIBLE' : isChallenge ? 'BLOCKED' : html && boardPosts > 0 ? 'PASS' : 'PARTIAL';
-            return { board, url: cfg.list, status, httpStatus: r.status, finalUrl: r.url, contentType: r.contentType, responseBytes: r.size, htmlTitle: titleOf(r.html), realBoardHtml: html && boardPosts > 0, loginRequired: isAuth && /로그인/i.test(r.html), ageGate: isAuth && /성인|본인/i.test(r.html), challenge: isChallenge, postsDetected: boardPosts };
+            const listAuthSignal = authGate(r.html);
+            const listHardAuth = listAuthSignal && boardPosts === 0;
+            const detailChecks = [];
+            for (const post of listPosts.filter((item) => !item.noise).slice(0, 2)) {
+              const d = await get(post.url, post.url);
+              const dHtml = /text\/html|application\/xhtml/i.test(d.contentType);
+              const dMedia = dHtml ? mediaUrls(d.html, d.url) : [];
+              const dAuthSignal = dHtml && authGate(d.html);
+              const dChallenge = challenge(d.status, d.html);
+              const dAuthRedirect = /(?:login|logincheck|auth|adult|age)/i.test(d.url);
+              const dHardAuth = dAuthSignal && dMedia.length === 0 && dAuthRedirect;
+              detailChecks.push({ url: post.url, status: d.status, finalUrl: d.url, contentType: d.contentType, responseBytes: d.size, htmlTitle: titleOf(d.html), ok: d.status >= 200 && d.status < 300 && dHtml && !dChallenge, mediaCount: dMedia.length, loginRequired: dAuthSignal, ageGate: dAuthSignal && /성인|19세|본인/i.test(d.html), authRedirect: dAuthRedirect, challenge: dChallenge, hardAuth: dHardAuth });
+              await sleep(DELAY);
+            }
+            const detailSuccess = detailChecks.filter((item) => item.ok).length;
+            const detailHardAuth = detailChecks.length > 0 && detailChecks.every((item) => item.hardAuth || item.challenge || item.status === 401 || item.status === 403);
+            const isAuth = listHardAuth || detailHardAuth;
+            const status = isChallenge ? 'BLOCKED' : isAuth ? 'NOT_ELIGIBLE' : html && boardPosts > 0 && detailSuccess > 0 ? 'PASS' : html && boardPosts > 0 ? 'PARTIAL' : 'PARTIAL';
+            return { board, url: cfg.list, status, httpStatus: r.status, finalUrl: r.url, contentType: r.contentType, responseBytes: r.size, htmlTitle: titleOf(r.html), realBoardHtml: html && boardPosts > 0, loginRequired: listAuthSignal || detailChecks.some((item) => item.loginRequired), ageGate: (listAuthSignal && /성인|19세|본인/i.test(r.html)) || detailChecks.some((item) => item.ageGate), challenge: isChallenge, postsDetected: boardPosts, listAuthSignal, detailSuccess, detailChecks };
           }
           async function probeMedia(rows) {
             const candidates = [];
