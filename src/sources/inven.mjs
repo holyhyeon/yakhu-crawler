@@ -11,18 +11,18 @@ function decodeHtml(value) {
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([\\da-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 
 function plainText(value) {
   return decodeHtml(value
-    .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ")
-    .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ")
-    .replace(/<(?:comment|reply|recommend|advertisement)\\b[^>]*>[\\s\\S]*?<\\/(?:comment|reply|recommend|advertisement)>/gi, " ")
-    .replace(/<(?:nav|header|footer|aside)\\b[^>]*>[\\s\\S]*?<\\/(?:nav|header|footer|aside)>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<(?:comment|reply|recommend|advertisement)\b[^>]*>[\s\S]*?<\/(?:comment|reply|recommend|advertisement)>/gi, " ")
+    .replace(/<(?:nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/(?:nav|header|footer|aside)>/gi, " ")
     .replace(/<[^>]+>/g, " "))
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -38,7 +38,7 @@ async function fetchText(url, referer) {
 
 export function extractListing(html) {
   const items = new Map();
-  const pattern = /<a\\b[^>]*href=["']((?:https?:\\/\\/www\\.inven\\.co\\.kr)?\\/board\\/webzine\\/2097\\/(\\d+))[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/gi;
+  const pattern = /<a\b[^>]*href=["']((?:https?:\/\/www\.inven\.co\.kr)?\/board\/webzine\/2097\/(\d+))[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(pattern)) {
     const sourcePostId = match[2];
     const title = plainText(match[3]).slice(0, 300);
@@ -54,7 +54,7 @@ export function extractListing(html) {
 }
 
 function contentScope(html) {
-  return html.match(/<div[^>]+id=["']powerbbsContent["'][^>]*>[\\s\\S]*?(?:<!--[\\s]*End\\s+CONTENT|<\\/div>\\s*<\\/div>)/i)?.[0] || "";
+  return html.match(/<div[^>]+id=["']powerbbsContent["'][^>]*>[\s\S]*?(?:<!--[\s]*End\s+CONTENT|<\/div>\s*<\/div>)/i)?.[0] || "";
 }
 
 export function extractBodyText(html) {
@@ -63,13 +63,13 @@ export function extractBodyText(html) {
 
 export function extractMediaUrls(html) {
   const urls = [];
-  const pattern = /<(?:img|video|source)\\b[^>]+(?:src|data-original|data-src)=["']((?:https?:)?\\/\\/[^"']+)["']/gi;
+  const pattern = /<(?:img|video|source)\b[^>]+(?:src|data-original|data-src)=["']((?:https?:)?\/\/[^"']+)["']/gi;
   for (const match of contentScope(html).matchAll(pattern)) {
     const raw = match[1].replace(/&amp;/g, "&");
     const url = raw.startsWith("//") ? "https:" + raw : raw;
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === "https:" && /^upload\\d*\\.inven\\.co\\.kr$/i.test(parsed.hostname) && /^\\/upload\\//i.test(parsed.pathname)) urls.push(parsed.href);
+      if (parsed.protocol === "https:" && /^upload\d*\.inven\.co\.kr$/i.test(parsed.hostname) && /^\/upload\//i.test(parsed.pathname)) urls.push(parsed.href);
     } catch {}
   }
   return [...new Set(urls)].slice(0, 3);
