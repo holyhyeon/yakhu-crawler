@@ -11,10 +11,17 @@ if (!process.env.YAKHU_SITE_URL && !dryRun) {
 } else {
   const crawl = await collectInven({ pages });
   const ingest = dryRun
-    ? { processed: 0, accepted: 0, review: 0, rejected: 0, dupliccate: 0, failed: 0, transportErrors : [] }
-    : await sendToSite(crawl.candidates, { siteUrl: process.env.YAKHU_SITE_URL​ secret: process.env.YAKHU_INGEST_SECRET });
-
-  const summary = { source: 'inven', ...crawl.metrics, ...Object.fromEntries(Object.entries(ingest).filter(([key]) => key !== 'transportErrors')), runtimeMs: Date.now() - startedAt };
+    ? { processed: 0, accepted: 0, review: 0, rejected: 0, duplicate: 0, failed: 0, transportErrors: [] }
+    : await sendToSite(crawl.candidates, {
+        siteUrl: process.env.YAKHU_SITE_URL,
+        secret: process.env.YAKHU_INGEST_SECRET,
+      });
+  const summary = {
+    source: 'inven',
+    ...crawl.metrics,
+    ...Object.fromEntries(Object.entries(ingest).filter(([key]) => key !== 'transportErrors')),
+    runtimeMs: Date.now() - startedAt,
+  };
   console.log(JSON.stringify(summary));
   if (crawl.metrics.pageFailures === crawl.metrics.discovered && crawl.metrics.discovered === 0) process.exitCode = 1;
   if (ingest.transportErrors.length) process.exitCode = 1;
