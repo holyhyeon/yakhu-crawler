@@ -1,4 +1,4 @@
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 2;
 
 export async function sendToSite(candidates, { siteUrl, secret }) {
   if (!siteUrl || !secret) throw new Error('missing_ingest_configuration');
@@ -12,7 +12,7 @@ export async function sendToSite(candidates, { siteUrl, secret }) {
         method: 'POST',
         headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json' },
         body: JSON.stringify({ candidates: batch }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(60_000),
       });
       if (!response.ok) {
         totals.failed += batch.length;
