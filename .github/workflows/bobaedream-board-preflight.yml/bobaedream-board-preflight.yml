@@ -1,0 +1,207 @@
+name: Bobaedream board preflight (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'access probes the two exact boards; yield samples one board'
+        required: true
+        default: 'access'
+        type: choice
+        options:
+          - 'access'
+          - 'yield'
+      board:
+        description: 'Exact Bobaedream board'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - 'both'
+          - 'nsfw'
+          - 'girl'
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PHASE: ${{ inputs.phase || 'access' }}
+      BOARD: ${{ inputs.board || 'both' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe exact Bobaedream board
+        shell: bash
+        run: |
+          cat > /tmp/bobaedream-board-preflight.mjs <<'NODE'
+          const UA = 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)';
+          const TIMEOUT = 12000;
+          const DELAY = 250;
+          const MAX_POSTS = 150;
+          const SOURCES = {
+            nsfw: { code: 'nsfw', list: 'https://www.bobaedream.co.kr/list?code=nsfw' },
+            girl: { code: 'girl', list: 'https://www.bobaedream.co.kr/list?code=girl' },
+          };
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const decode = (s) => String(s || '').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/&nbsp;/gi, ' ');
+          const plain = (s) => decode(s).replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, ' ').replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+          const attr = (s, name) => { const m = String(s || '').match(new RegExp('\\\\b' + name + '\\\\s*=\\\\s*(["\\\'])(.*?)\\\\1', 'i')); return m ? decode(m[2]) : ''; };
+          const abs = (raw, base) => { try { return new URL(decode(raw), base).href; } catch { return null; } };
+          const challenge = (status, html) => status === 401 || status === 403 || status === 429 || /captcha|cloudflare|ddos|security\\s*check|접근\\s*제한|성인\\s*(?:인증|전용)|본인\\s*인증|로그인\\s*후/i.test((html.match(/<title[^>]*>[\\s\\S]*?<\\/title>/i)?.[0] || '') + String(html || '').slice(0, 5000));
+          const authGate = (html) => /로그인\\s*(?:후|필요)|성인\\s*(?:인증|전용)|본인\\s*인증|회원만|로그인\\s*필요/i.test(String(html || '').slice(0, 12000));
+          async function get(url, referer, extraHeaders = {}) {
+            try {
+              const headers = { 'user-agent': UA, 'accept-language': 'ko-KR,ko;q=0.9', ...extraHeaders };
+              if (referer) headers.referer = referer;
+              const response = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT) });
+              const buffer = await response.arrayBuffer();
+              const html = new TextDecoder('utf-8').decode(buffer);
+              return { status: response.status, url: response.url, contentType: response.headers.get('content-type') || '', size: buffer.byteLength, html };
+            } catch (error) { return { status: 0, url, contentType: '', size: 0, html: '', error: error.message }; }
+          }
+          function titleOf(html) { return plain(html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] || '').slice(0, 200); }
+          function parseDate(text) {
+            const m = String(text || '').match(/(20\\d{2})[.\\/-](\\d{1,2})[.\\/-](\\d{1,2})(?:\\s+(\\d{1,2}):(\\d{2}))?/);
+            if (!m) return null;
+            const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0)));
+            return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+          }
+          function noiseTitle(title, url) { return /(?:^|[\\s\\[【])공지|운영\\s*규정|이벤트|이용\\s*안내|광고|협찬|파트너|배너|프로모션/i.test(String(title || '') + ' ' + String(url || '')); }
+          function parsePosts(html, base, cfg) {
+            const map = new Map();
+            for (const m of String(html || '').matchAll(/<a\\b([^>]*)>([\\s\\S]*?)<\\/a>/gi)) {
+              const rawHref = attr(m[1], 'href');
+              const href = abs(rawHref, base);
+              if (!href) continue;
+              let u;
+              try { u = new URL(href); } catch { continue; }
+              if (!/\\/view(?:\\.php)?$/i.test(u.pathname)) continue;
+              const code = u.searchParams.get('code');
+              const no = u.searchParams.get('No') || u.searchParams.get('no');
+              if (code !== cfg.code || !no) continue;
+              const key = code + ':' + no;
+              const title = plain(m[2]).replace(/\\s+/g, ' ').trim() || '게시물 ' + no;
+              const row = { key, code, no, url: 'https://www.bobaedream.co.kr/view?code=' + encodeURIComponent(code) + '&No=' + encodeURIComponent(no), title, noise: noiseTitle(title, href), listDate: parseDate(plain(m[0])) };
+              const old = map.get(key);
+              if (!old || title.length > old.title.length) map.set(key, row);
+            }
+            return [...map.values()];
+          }
+          function mediaUrls(html, base) {
+            const out = [];
+            for (const tag of String(html || '').matchAll(/<(?:img|video|source|a)\\b[^>]*>/gi)) {
+              for (const m of tag[0].matchAll(/(?:src|data-src|data-original|href)=["']([^"']+)["']/gi)) {
+                const url = abs(m[1], base);
+                if (!url || /^(?:data:|javascript:)/i.test(url)) continue;
+                if (/logo|icon|avatar|emoji|favicon|banner|advert|sponsor|btn_|button/i.test(url)) continue;
+                if (/\\.(?:jpe?g|png|gif|webp|avif|mp4|webm)(?:[?#]|$)/i.test(url) || /(?:upload|attach|image|img|media|files|photo|thumbnail)/i.test(url)) out.push(url);
+              }
+            }
+            return [...new Set(out)].slice(0, 12);
+          }
+          function bodyText(html) { return plain(html).slice(0, 12000); }
+          const NEGATIVE = ['미성년','청소년','10대','학생','여고생','교복','아동','소녀','소년','로리','몰카','도촬','불법촬영','유출','딥페이크','그림','일러스트','팬아트','창작','캐릭터','애니','애니메이션','만화','웹툰','게임','인게임','게임 스크린샷','게임 캐릭터','스킨','원화','콘셉트아트','코스튬 이미지','카톡','문자','메시지 캡처','채팅 캡처','커뮤니티 캡처','스크린샷','캡처','밈','짤방','디시콘','스티커','낙서','2D','탑툰'];
+          const escapeRegExp = (s) => s.replace(/[.*+?^$()|[\\]\\\\{}]/g, '\\\\$&');
+          const NEGATIVE_PATTERN = new RegExp('(?:' + NEGATIVE.map(escapeRegExp).join('|') + ')', 'i');
+          const TECHNICAL_OR_NEWS = [/(?:open\\s*ai|gpt|llm|언어\\s*모델|차세대\\s*모델|내부\\s*모델|신형\\s*모델|소프트웨어\\s*모델|제품\\s*모델|자동차\\s*모델|차량\\s*모델|기기\\s*모델)/i,/(?:ai\\s*(?:배우|모델|사진|이미지)|채널\\s*a|할리우드|징병|정책|법안|국회|정치|사회\\s*이슈|뉴스|논란|사건)/i,/(?:임신|소방관|역사상|인류\\s*역사|가장\\s*오래된|남자\\s*신체|신체\\s*비밀)/i];
+          const WEAK_TITLE = /(ㅇㅎ|ㅎㅂ|약후|후방|후방주의|야짤)/i;
+          const STRONG_TARGET_CONTEXT = [/비키니|수영복|모노키니|란제리|브라렛|시스루|여친룩|파티룩|비치웨어/i,/화보|그라비아|맥심|바디\\s*프로필|룩북|치어리더|레이싱\\s*모델|피팅\\s*모델/i,/여캠|인플루언서|아나운서|성인\\s*배우|여배우|아이돌|걸그룹|bj|스트리머|댄서/i,/실사\\s*(?:사진|인물|여성)|실제\\s*인물|여성\\s*모델|패션\\s*모델|비키니\\s*모델|맥심\\s*모델/i];
+          const SOCIAL_CONTEXT = /인스타|셀카|직캠|릴스|틱톡/i;
+          const PERSON_CONTEXT = /여성|여자|여캠|눈나|누나|치어리더|인플루언서|아나운서|여배우|가수|아이돌|걸그룹|bj|스트리머|댄서|배우/i;
+          const BODY_CONTEXT = /몸매|피지컬|골반|각선미|복근|가슴|폭유|슬랜더/i;
+          const COSPLAY_CONTEXT = /코스프레/i;
+          const MODEL_CONTEXT = /레이싱\\s*모델|여성\\s*모델|패션\\s*모델|화보\\s*모델|비키니\\s*모델|맥심\\s*모델|피팅\\s*모델|모델\\s*(?:화보|촬영|사진|출사)/i;
+          function qualityGate(title, source, body) {
+            if (source === 'MAXIM B-CUT' || source === 'maxim') return { decision: 'accept', reason: 'trusted_source' };
+            const titleValue = String(title || '').toLocaleLowerCase('ko-KR');
+            const value = (String(title || '') + '\\n' + String(body || '')).toLocaleLowerCase('ko-KR').trim();
+            if (!value) return { decision: 'reject', reason: 'empty_context' };
+            if (NEGATIVE_PATTERN.test(value)) return { decision: 'reject', reason: 'negative_context' };
+            if (TECHNICAL_OR_NEWS.some((pattern) => pattern.test(value))) return { decision: 'reject', reason: 'technical_or_news' };
+            if (value.includes('모델') && !MODEL_CONTEXT.test(value) && !STRONG_TARGET_CONTEXT.some((pattern) => pattern.test(value))) return { decision: 'review', reason: 'ambiguous_model_context' };
+            if (value.includes('배우') && !/성인\\s*배우|여배우|화보|인스타|비키니|수영복/i.test(value)) return { decision: 'review', reason: 'ambiguous_actor_context' };
+            if (STRONG_TARGET_CONTEXT.some((pattern) => pattern.test(value))) return { decision: 'accept', reason: 'strong_target_signal' };
+            if (WEAK_TITLE.test(titleValue)) { if (SOCIAL_CONTEXT.test(value)) return { decision: 'accept', reason: 'weak_marker_with_social_context' }; return { decision: 'review', reason: 'weak_only' }; }
+            if (PERSON_CONTEXT.test(value) || BODY_CONTEXT.test(value) || MODEL_CONTEXT.test(value) || COSPLAY_CONTEXT.test(value)) return { decision: 'review', reason: 'ambiguous_context' };
+            return { decision: 'reject', reason: 'no_target_signal' };
+          }
+          const CLASS_NEGATIVE = /미성년|청소년|교복|아동|몰카|도촬|유출|딥페이크|그림|일러스트|팬아트|애니|만화|게임|스크린샷|캡처|카톡|문자|밈|짤방|디시콘|스티커|정치|사건|뉴스|광고|제품|남자|남성|공지|이벤트/i;
+          const CLASS_STRONG = /비키니|수영복|화보|그라비아|맥심|치어리더|레이싱\\s*모델|여캠|인플루언서|아나운서|성인\\s*배우|여배우|아이돌|걸그룹|여성\\s*모델|패션\\s*모델|바디\\s*프로필|룩북|직캠|셀카|인스타|여친룩|몸매|골반|각선미|실사\\s*(?:사진|인물)/i;
+          const CLASS_PERSON = /여성|여자|누나|눈나|배우|가수|아이돌|모델|인스타|셀카|사진|화보|직캠|치어리더|레이싱/i;
+          function manualClassify(board, title, body, mediaCount) {
+            const text = String(title || '') + '\\n' + String(body || '');
+            if (!mediaCount) return { label: 'NON_TARGET', reason: 'no_media' };
+            if (CLASS_NEGATIVE.test(text)) return { label: 'NON_TARGET', reason: 'negative_context' };
+            if (CLASS_STRONG.test(text) && !/뉴스|사건|정치|광고|공지|이벤트/i.test(text)) return { label: 'TARGET', reason: 'visual_women_signal' };
+            if (board === 'girl' && /모델|레이싱|화보|사진|직캠|인스타|셀카|여성|여자/i.test(text)) return { label: 'TARGET', reason: 'girl_board_visual_context' };
+            if (CLASS_PERSON.test(text) || board === 'nsfw') return { label: 'AMBIGUOUS', reason: 'needs_visual_review' };
+            return { label: 'NON_TARGET', reason: 'no_target_signal' };
+          }
+          async function mapLimit(items, limit, worker) { const out = new Array(items.length); let next = 0; async function run() { while (true) { const i = next++; if (i >= items.length) return; out[i] = await worker(items[i], i); } } await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run)); return out; }
+          async function accessProbe(board) {
+            const cfg = SOURCES[board];
+            const r = await get(cfg.list, cfg.list);
+            const html = /text\\/html|application\\/xhtml/i.test(r.contentType);
+            const boardPosts = html ? parsePosts(r.html, r.url, cfg).length : 0;
+            const isChallenge = challenge(r.status, r.html);
+            const isAuth = authGate(r.html);
+            const status = isAuth ? 'NOT_ELIGIBLE' : isChallenge ? 'BLOCKED' : html && boardPosts > 0 ? 'PASS' : 'PARTIAL';
+            return { board, url: cfg.list, status, httpStatus: r.status, finalUrl: r.url, contentType: r.contentType, responseBytes: r.size, htmlTitle: titleOf(r.html), realBoardHtml: html && boardPosts > 0, loginRequired: isAuth && /로그인/i.test(r.html), ageGate: isAuth && /성인|본인/i.test(r.html), challenge: isChallenge, postsDetected: boardPosts };
+          }
+          async function probeMedia(rows) {
+            const candidates = [];
+            for (const row of rows) for (const url of row.mediaUrls) { if (!candidates.some((x) => x.url === url)) candidates.push({ url, referer: row.url }); if (candidates.length >= 4) break; }
+            const results = [];
+            for (const item of candidates) {
+              let r = await fetchMedia(item.url, item.referer, false);
+              if ((!r.ok || r.status === 401 || r.status === 403) && r.status !== 0) { const withRef = await fetchMedia(item.url, item.referer, true); results.push({ ...withRef, url: item.url, refererRequired: withRef.ok ? true : '확인 불가', testedWithoutReferer: true }); }
+              else results.push({ ...r, url: item.url, refererRequired: r.ok ? false : '확인 불가', testedWithoutReferer: true });
+              await sleep(DELAY);
+            }
+            return results;
+          }
+          async function fetchMedia(url, referer, includeReferer) {
+            try {
+              const headers = { 'user-agent': UA, range: 'bytes=0-31' }; if (includeReferer) headers.referer = referer;
+              const r = await fetch(url, { method: 'GET', headers, redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT) });
+              const type = r.headers.get('content-type') || ''; const ok = r.status >= 200 && r.status < 300 && /^(?:image|video)\\//i.test(type); if (r.body) await r.body.cancel();
+              return { status: r.status, contentType: type, redirect: false, ok, sentReferer: includeReferer };
+            } catch (error) { return { status: 0, contentType: '', redirect: false, ok: false, sentReferer: includeReferer, error: error.message }; }
+          }
+          async function yieldBoard(board) {
+            const cfg = SOURCES[board]; const map = new Map(); let listFetchSuccess = 0; let listFetchFailure = 0; let duplicates = 0; let discovered = 0; let noiseExcluded = 0; let challengeCount = 0;
+            for (let page = 1; page <= 15 && map.size < MAX_POSTS; page++) {
+              const u = new URL(cfg.list); if (page > 1) u.searchParams.set('page', String(page));
+              const r = await get(u.href, cfg.list);
+              if (r.status >= 200 && r.status < 300 && !challenge(r.status, r.html)) {
+                listFetchSuccess++;
+                for (const post of parsePosts(r.html, r.url, cfg)) {
+                  discovered++;
+                  if (post.noise) { noiseExcluded++; continue; }
+                  if (map.has(post.key)) duplicates++; else if (map.size < MAX_POSTS) map.set(post.key, post);
+                }
+              } else { listFetchFailure++; if (challenge(r.status, r.html)) challengeCount++; break; }
+              await sleep(DELAY);
+            }
+            const posts = [...map.values()].slice(0, MAX_POSTS); let detailRequested = 0; let detailSuccess = 0; let detailFailure = 0;
+            const rows = await mapLimit(posts, 4, async (post) => {
+              await sleep(DELAY); detailRequested++;
+              const r = await get(post.url, post.url);
+              if (r.status < 200 || r.status >= 300 || challenge(r.status, r.html)) { detailFailure++; return { ...post, bodyText: '', mediaUrls: [], publishedAt: post.listDate, label: 'NON_TARGET', reason: 'detail_unavailable', gate: { decision: 'reject', reason: 'detail_unavailable' } }; }
+              detailSuccess++; const body = bodyText(r.html); const media = mediaUrls(r.html, r.url); const publishedAt = parseDate(r.html) || post.listDate; const c = manualClassify(board, post.title, body, media.length); const g = qualityGate(post.title, 'bobaedream', body); return { ...post, bodyText: body, mediaUrls: media, publishedAt, ...c, gate: g };
+            });
+            const counts = { TARGET: 0, AMBIGUOUS: 0, NON_TARGET: 0 }; const gateCounts = { accept: 0, review: 0, reject: 0 }; const matrix = { TARGET: { accept: 0, review: 0, reject: 0 }, AMBIGUOUS: { accept: 0, review: 0, reject: 0 }, NON_TARGET: { accept: 0, review: 0, reject: 0 } };
+            for (const row of rows) { counts[row.label]++; gateCounts[row.gate.decision]++; matrix[row.label][row.gate.decision]++; }
+            const dated = rows.filter((row) => row.publishedAt).map((row) => ({ row, time: Date.parse(row.publishedAt) })).filter((x) => Number.isFinite(x.time)); const newest = dated.length ? new Date(Math.max(...dated.map((x) => x.time))).toISOString() : null; const oldest = dated.length ? new Date(Math.min(...dated.map((x) => x.time))).toISOString() : null; const now = Date.now();
+            const windowStats = (days) => { const cutoff = now - days * 86400000; const subset = dated.filter((x) => x.time >= cutoff && x.time <= now + 86400000); const target = subset.filter((x) => x.row.label === 'TARGET').length; const amb = subset.filter((x) => x.row.label === 'AMBIGUOUS').length; return { posts: subset.length, target, ambiguous: amb, rawPostsPerDay: Number((subset.length / days).toFixed(3)), targetPerDay: Number((target / days).toFixed(3)), potentialPerDay: Number(((target + amb) / days).toFixed(3)) }; };
+            const mediaDetected = rows.filter((row) => row.mediaUrls.length > 0).length; const mediaTotal = rows.reduce((n, row) => n + row.mediaUrls.length, 0); const mediaProbe = await probeMedia(rows); const sampleRows = (label, n) => rows.filter((row) => row.label === label).slice(0, n).map((row) => ({ title: row.title, url: row.url, mediaCount: row.mediaUrls.length, reason: row.reason, gate: row.gate.decision }));
+            return { phase: 'yield', board, listUrl: cfg.list, listFetchSuccess, listFetchFailure, discovered, noiseExcluded, duplicatePosts: duplicates, sampled: posts.length, period: { newestPublishedAt: newest, oldestPublishedAt: oldest, datedPosts: dated.length, spanHours: newest && oldest ? Number(((Date.parse(newest) - Date.parse(oldest)) / 3600000).toFixed(2)) : null }, recent: { h24: windowStats(1), d3: windowStats(3), d7: windowStats(7) }, detailRequested, detailSuccess, detailFailure, mediaDetected, mediaTotal, TARGET: counts.TARGET, AMBIGUOUS: counts.AMBIGUOUS, NON_TARGET: counts.NON_TARGET, targetYield: posts.length ? Number((counts.TARGET / posts.length).toFixed(4)) : null, potentialYield: posts.length ? Number(((counts.TARGET + counts.AMBIGUOUS) / posts.length).toFixed(4)) : null, TARGET_per_day: dated.length ? windowStats(3).targetPerDay : null, Potential_per_day: dated.length ? windowStats(3).potentialPerDay : null, qualityGate: { ACCEPT: gateCounts.accept, REVIEW: gateCounts.review, REJECT: gateCounts.reject, matrix, falsePositive: matrix.NON_TARGET.accept, falseNegative: matrix.TARGET.reject }, mediaProbe, targetSamples: sampleRows('TARGET', 5), ambiguousSamples: sampleRows('AMBIGUOUS', 5), nonTargetSamples: sampleRows('NON_TARGET', 5), notes: 'Exact code=nsfw or code=girl only; no media bytes saved; classification is metadata/text triage.' };
+          }
+          const phase = process.env.PHASE || 'access'; const board = process.env.BOARD || 'both'; const result = phase === 'yield' ? await yieldBoard(board) : { phase: 'access', results: await Promise.all((board === 'both' ? ['nsfw', 'girl'] : [board]).map(accessProbe)) }; console.log(JSON.stringify(result));
+          NODE
+          node /tmp/bobaedream-board-preflight.mjs
