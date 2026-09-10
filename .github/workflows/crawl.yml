@@ -1,9 +1,8 @@
 name: Inven bounded crawl
 
 on:
-  # schedule temporarily disabled until Site /api/ingest is deployed
-  # schedule:
-  #   - cron: '7,22,37,52 * * * *'
+  schedule:
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       pages:
