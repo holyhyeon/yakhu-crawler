@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: 'Source to crawl (scheduled runs remain Inven until Bobaedream canary is enabled)'
+        description: 'Source to crawl (scheduled runs crawl Inven and Bobaedream)'
         required: false
         default: 'inven'
         type: choice
@@ -38,7 +38,7 @@ jobs:
     env:
       YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
-      CRAWL_SOURCE: ${{ inputs.source || 'inven' }}
+      CRAWL_SOURCE: ${{ inputs.source || 'all' }}
       CRAWL_PAGES: ${{ inputs.pages || '3' }}
     steps:
       - name: Checkout
