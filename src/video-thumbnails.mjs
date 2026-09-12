@@ -59,10 +59,15 @@ async function extractPoster(inputPath, outputPath) {
 async function processOne(item, directory) {
   const inputPath = join(directory, `${item.id}.mp4`);
   const outputPath = join(directory, `${item.id}.webp`);
-  const mediaResponse = await fetch(item.mediaUrl, {
-    headers: { authorization: `Bearer ${secret}` },
-    signal: AbortSignal.timeout(requestTimeout),
-  });
+  let mediaResponse;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    mediaResponse = await fetch(item.mediaUrl, {
+      headers: { authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(requestTimeout),
+    });
+    if (mediaResponse.status !== 404 || attempt === 1) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
   if (!mediaResponse.ok) throw new Error(`media_${mediaResponse.status}`);
   await writeFile(inputPath, Buffer.from(await mediaResponse.arrayBuffer()));
   const poster = await extractPoster(inputPath, outputPath);
