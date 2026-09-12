@@ -92,7 +92,20 @@ try {
     try {
       results.push({ mediaId: item.id, status: 'generated', ...(await processOne(item, directory)) });
     } catch (error) {
-      results.push({ mediaId: item.id, status: 'error', reason: error instanceof Error ? error.message : String(error) });
+      const reason = error instanceof Error ? error.message : String(error);
+      if (reason === 'media_404') {
+        results.push({
+          mediaId: item.id,
+          postId: item.postId ?? null,
+          source: item.source ?? null,
+          status: 'skipped',
+          reason: 'original_unavailable',
+          objectKey: item.objectKey ?? null,
+          mediaUrl: item.mediaUrl,
+        });
+      } else {
+        results.push({ mediaId: item.id, status: 'error', reason });
+      }
     }
   }
 } finally {
@@ -102,10 +115,18 @@ try {
 const generated = results.filter((item) => item.status === 'generated');
 const skipped = results.filter((item) => item.status === 'skipped');
 const errors = results.filter((item) => item.status === 'error');
+const skippedReasons = Object.fromEntries(
+  skipped.reduce((counts, item) => {
+    const reason = item.reason ?? 'other';
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+    return counts;
+  }, new Map()),
+);
 console.log(JSON.stringify({
   scanned: items.length,
   generated: generated.length,
   skipped: skipped.length,
+  skippedReasons,
   errors: errors.length,
   nextCursor: queue.nextCursor ?? null,
   results,
