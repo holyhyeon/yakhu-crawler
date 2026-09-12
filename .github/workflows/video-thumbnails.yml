@@ -1,0 +1,56 @@
+name: Video thumbnail backfill
+
+on:
+  # Temporary push trigger runs the first bounded canary after this workflow is committed.
+  # Remove this trigger after the canary; workflow_dispatch remains the manual path.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/video-thumbnails.yml'
+      - 'src/video-thumbnails.mjs'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Video posters to process (1-25)'
+        required: false
+        default: '5'
+        type: string
+      cursor:
+        description: 'Queue cursor from the previous run'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: video-thumbnail-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  poster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
+      VIDEO_THUMBNAIL_LIMIT: ${{ inputs.limit || '5' }}
+      VIDEO_THUMBNAIL_CURSOR: ${{ inputs.cursor || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check FFmpeg
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Generate and upload posters
+        run: node src/video-thumbnails.mjs
