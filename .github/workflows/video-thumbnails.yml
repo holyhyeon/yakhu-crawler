@@ -1,19 +1,22 @@
 name: Video thumbnail backfill
 
 on:
-  # Temporary push trigger runs the first bounded canary after this workflow is committed.
-  # Remove this trigger after the canary; workflow_dispatch remains the manual path.
+  # This push run drains the existing queue after the backfill workflow changes.
   push:
     branches: [main]
     paths:
       - '.github/workflows/video-thumbnails.yml'
       - 'src/video-thumbnails.mjs'
+  # Drain new media after the existing crawler run without changing its cron.
+  workflow_run:
+    workflows: ['Community bounded crawl']
+    types: [completed]
   workflow_dispatch:
     inputs:
       limit:
-        description: 'Video posters to process (1-25)'
+        description: 'Video posters per batch (1-25)'
         required: false
-        default: '5'
+        default: '25'
         type: string
       cursor:
         description: 'Queue cursor from the previous run'
@@ -30,12 +33,13 @@ permissions:
 
 jobs:
   poster:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     env:
       YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
-      VIDEO_THUMBNAIL_LIMIT: ${{ inputs.limit || '5' }}
+      VIDEO_THUMBNAIL_LIMIT: ${{ inputs.limit || '25' }}
       VIDEO_THUMBNAIL_CURSOR: ${{ inputs.cursor || '' }}
     steps:
       - name: Checkout
@@ -53,4 +57,85 @@ jobs:
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
       - name: Generate and upload posters
-        run: node src/video-thumbnails.mjs
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { spawn } from 'node:child_process';
+
+          const limit = Math.min(25, Math.max(1, Number(process.env.VIDEO_THUMBNAIL_LIMIT || 25)));
+          let cursor = process.env.VIDEO_THUMBNAIL_CURSOR || '';
+          let scanned = 0;
+          let generated = 0;
+          let skipped = 0;
+          let errors = 0;
+          let batches = 0;
+          let exhausted = false;
+          const skippedReasons = {};
+
+          function runBatch(batchCursor) {
+            return new Promise((resolve, reject) => {
+              const child = spawn(process.execPath, ['src/video-thumbnails.mjs'], {
+                env: {
+                  ...process.env,
+                  VIDEO_THUMBNAIL_LIMIT: String(limit),
+                  VIDEO_THUMBNAIL_CURSOR: batchCursor,
+                },
+                stdio: ['ignore', 'pipe', 'pipe'],
+              });
+              let stdout = '';
+              let stderr = '';
+              child.stdout.on('data', (chunk) => { stdout += chunk; });
+              child.stderr.on('data', (chunk) => { stderr += chunk; });
+              child.on('error', reject);
+              child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
+            });
+          }
+
+          for (let index = 0; index < 200; index += 1) {
+            const result = await runBatch(cursor);
+            if (result.stderr) process.stderr.write(result.stderr);
+            if (result.stdout) process.stdout.write(result.stdout);
+
+            let data;
+            try {
+              data = JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) || '');
+            } catch {
+              throw new Error(`invalid_thumbnail_batch_output:${result.code}`);
+            }
+
+            batches += 1;
+            scanned += Number(data.scanned) || 0;
+            generated += Number(data.generated) || 0;
+            skipped += Number(data.skipped) || 0;
+            errors += Number(data.errors) || 0;
+            for (const [reason, count] of Object.entries(data.skippedReasons || {})) {
+              skippedReasons[reason] = (skippedReasons[reason] || 0) + (Number(count) || 0);
+            }
+
+            const nextCursor = data.nextCursor || '';
+            if (!data.scanned || !nextCursor) {
+              exhausted = true;
+              break;
+            }
+            if (nextCursor === cursor) throw new Error('thumbnail_cursor_did_not_advance');
+            cursor = nextCursor;
+          }
+
+          const summary = { scanned, generated, skipped, skippedReasons, errors, batches, nextCursor: cursor || null, exhausted };
+          console.log(JSON.stringify({ type: 'video_thumbnail_backfill_summary', ...summary }));
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+              '### Video poster backfill',
+              '',
+              `- scanned: ${scanned}`,
+              `- generated: ${generated}`,
+              `- skipped: ${skipped}`,
+              `- errors: ${errors}`,
+              `- batches: ${batches}`,
+              `- exhausted: ${exhausted ? 'yes' : 'no'}`,
+              `- skipped reasons: ${JSON.stringify(skippedReasons)}`,
+              '',
+            ].join('\n'));
+          }
+          if (!exhausted || errors > 0) process.exitCode = 1;
+          NODE
