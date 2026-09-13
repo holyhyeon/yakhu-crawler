@@ -11,6 +11,9 @@ on:
   workflow_run:
     workflows: ['Community bounded crawl']
     types: [completed]
+  # Sweep posterless videos from any ingest path without changing crawler timing.
+  schedule:
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       limit:
@@ -53,6 +56,9 @@ jobs:
       VIDEO_THUMBNAIL_CURSOR: ${{ inputs.cursor || '' }}
       VIDEO_THUMBNAIL_MEDIA_ID: ${{ inputs.mediaId || '' }}
       VIDEO_THUMBNAIL_POST_ID: ${{ inputs.postId || '' }}
+      # Push/scheduled runs are intentionally one bounded batch; crawl-triggered and
+      # explicitly manual runs retain the existing queue-drain behavior.
+      VIDEO_THUMBNAIL_MAX_BATCHES: ${{ (github.event_name == 'schedule' || github.event_name == 'push') && '1' || '200' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,6 +88,8 @@ jobs:
           let errors = 0;
           let batches = 0;
           let exhausted = false;
+          const maxBatches = Math.min(200, Math.max(1, Number(process.env.VIDEO_THUMBNAIL_MAX_BATCHES || 200)));
+          const boundedSweep = maxBatches < 200;
           const skippedReasons = {};
 
           function runBatch(batchCursor) {
@@ -103,7 +111,7 @@ jobs:
             });
           }
 
-          for (let index = 0; index < 200; index += 1) {
+          for (let index = 0; index < maxBatches; index += 1) {
             const result = await runBatch(cursor);
             if (result.stderr) process.stderr.write(result.stderr);
             if (result.stdout) process.stdout.write(result.stdout);
@@ -133,7 +141,9 @@ jobs:
             cursor = nextCursor;
           }
 
-          const summary = { scanned, generated, skipped, skippedReasons, errors, batches, nextCursor: cursor || null, exhausted };
+          const reachedBound = !exhausted && boundedSweep && batches >= maxBatches;
+          const complete = exhausted || reachedBound;
+          const summary = { scanned, generated, skipped, skippedReasons, errors, batches, nextCursor: cursor || null, exhausted, bounded: reachedBound };
           console.log(JSON.stringify({ type: 'video_thumbnail_backfill_summary', ...summary }));
           if (process.env.GITHUB_STEP_SUMMARY) {
             appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
@@ -145,9 +155,10 @@ jobs:
               `- errors: ${errors}`,
               `- batches: ${batches}`,
               `- exhausted: ${exhausted ? 'yes' : 'no'}`,
+              `- bounded sweep: ${reachedBound ? 'yes' : 'no'}`,
               `- skipped reasons: ${JSON.stringify(skippedReasons)}`,
               '',
             ].join('\n'));
           }
-          if (!exhausted || errors > 0) process.exitCode = 1;
+          if (!complete || errors > 0) process.exitCode = 1;
           NODE
