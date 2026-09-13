@@ -1,0 +1,29 @@
+name: Inven board preflight (temporary)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Maximum posts per board
+        required: false
+        default: '100'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      INVEN_PREFLIGHT_LIMIT: ${{ inputs.limit || '100' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run desktop Inven board sample
+        run: node scripts/inven-board-preflight.mjs
