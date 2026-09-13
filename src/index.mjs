@@ -6,8 +6,8 @@ const pages = process.env.CRAWL_PAGES || '3';
 const requestedSource = (process.env.CRAWL_SOURCE || 'inven').toLowerCase();
 const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const categorySources = {
-  inven_cheer_gif: { board: 'party/6296', category: '움짤', label: '치어리더 움짤' },
-  inven_game_model: { board: 'webzine/2898', category: '게임모델', label: '게임모델' },
+  inven_cheer_gif: { board: 'party/6296', category: '움짤', categoryLabel: '인벤 치어리더 움짤' },
+  inven_game_model: { board: 'webzine/2898', category: '게임모델', categoryLabel: '인벤 게임모델' },
 };
 const categorySourceIds = Object.keys(categorySources);
 const sourceIds = requestedSource === 'all'
