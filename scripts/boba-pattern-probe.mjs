@@ -16,7 +16,8 @@ function normalizedUrl(raw, base) {
   } catch { return null; }
 }
 function summarize(html, base) {
-  const tags = [...String(html).matchAll(/<(img|video|source|a|iframe|script)\\b([^>]*)>/gi)];
+  const source = String(html || '');
+  const tags = [...source.matchAll(/<(img|video|source|a|iframe|script)[ >]/gi)];
   const tagCounts = {};
   const attrCounts = {};
   const samples = [];
@@ -24,9 +25,9 @@ function summarize(html, base) {
   for (const m of tags) {
     const tagName = m[1].toLowerCase();
     tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
-    const attrs = m[2] || '';
+    const attrs = m[0] || '';
     for (const name of ['src','data-src','data-original','data-lazy-src','lazy-src','href','poster','style']) {
-      if (new RegExp('\\\\b' + name + '\\s*=', 'i').test(attrs)) attrCounts[name] = (attrCounts[name] || 0) + 1;
+      if (attrs.toLowerCase().includes(name.toLowerCase() + '=')) attrCounts[name] = (attrCounts[name] || 0) + 1;
       const raw = attr(m[0], name);
       if (!raw) continue;
       const u = normalizedUrl(raw, base);
@@ -37,16 +38,17 @@ function summarize(html, base) {
       }
     }
   }
-  const classes = [...String(html).matchAll(/<(?:div|section|article)[^>]*(?:class|id)=["'][^"']*(?:print|view|conView|article|content|body)[^"']*["']/gi)].slice(0, 20).map((m) => m[0].replace(/\\s+/g, ' ').slice(0, 180));
-  return {
-    tagCounts,
-    attrCounts,
-    mediaHostHits,
-    samples,
-    rootMarkers: classes,
-    backgroundImageCount: (String(html).match(/background-image\\s*:/gi) || []).length,
-    scriptMediaHints: (String(html).match(/file\\d*\\.bobaedream\\.co\\.kr/gi) || []).length,
-  };
+  const lower = source.toLowerCase();
+  const signalCounts = {};
+  for (const signal of ['content_video','chzzk','iframe','video','source','img','file','image','attach','media','player','videoid','data-url','data-file']) signalCounts[signal] = lower.split(signal).length - 1;
+  const escapedTagCounts = {};
+  for (const tag of ['img','video','source','iframe','a']) escapedTagCounts[tag] = lower.split('&lt;' + tag).length - 1;
+  const snippets = [];
+  for (const marker of ['content_video','chzzk','videoid','data-url','data-file','iframe','player']) {
+    const index = lower.indexOf(marker);
+    if (index >= 0) snippets.push({ marker, text: source.slice(Math.max(0, index - 80), index + 280).replaceAll('\\n', ' ').replaceAll('\\r', ' ') });
+  }
+  return { tagCounts, attrCounts, mediaHostHits, samples, signalCounts, escapedTagCounts, snippets };
 }
 async function get(url, referer) {
   const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'ko-KR,ko;q=0.9', referer }, redirect: 'follow', signal: AbortSignal.timeout(15000) });
