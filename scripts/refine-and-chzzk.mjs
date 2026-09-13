@@ -83,26 +83,20 @@ function publishedAt(html) {
 }
 function parsePannList(html, base) {
   const out = new Map();
-  // Pann list rows carry the category link and the numeric post link in the same row.
-  for (const row of html.matchAll(/<(?:li|tr|div)\b[^>]*>[\s\S]*?<\/(?:li|tr|div)>/gi)) {
-    const block = row[0];
-    const catMatch = block.match(/href\s*=\s*["'](\/talk\/c\d+)["'][^>]*>([\s\S]*?)<\/a>/i);
-    const category = catMatch ? { id: catMatch[1].split('/').pop(), label: cleanText(catMatch[2]).slice(0, 80) } : { id: 'unknown', label: 'unknown' };
-    for (const m of block.matchAll(/<a\b[^>]*href\s*=\s*["'](\/talk\/(\d+))["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-      const url = abs(m[1], base);
-      if (!url || out.has(url)) continue;
-      const title = cleanText(m[3]).slice(0, 240);
-      if (!title || /공지|로그인|회원가입|이용약관/i.test(title)) continue;
-      out.set(url, { url, title, category });
-    }
-  }
-  // Fallback for markup without row wrappers.
+  // Only numeric /talk/<id> links are posts. Category links (/talk/c...) and
+  // /channel/ paths are deliberately excluded. Infer the nearest category
+  // anchor from the same small list-row window when the markup exposes one.
   for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["'](\/talk\/(\d+))["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     const url = abs(m[1], base);
     if (!url || out.has(url)) continue;
     const title = cleanText(m[3]).slice(0, 240);
     if (!title || /공지|로그인|회원가입|이용약관/i.test(title)) continue;
-    out.set(url, { url, title, category: { id: 'unknown', label: 'unknown' } });
+    const windowStart = Math.max(0, (m.index || 0) - 1800);
+    const window = html.slice(windowStart, m.index || 0);
+    const categories = [...window.matchAll(/href\s*=\s*["'](\/talk\/c\d+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
+    const cat = categories.at(-1);
+    const category = cat ? { id: cat[1].split('/').pop(), label: cleanText(cat[2]).slice(0, 80) } : { id: 'unknown', label: 'unknown' };
+    out.set(url, { url, title, category });
   }
   return [...out.values()];
 }
@@ -124,7 +118,16 @@ function summarize(details) {
 async function runPann() {
   const homeUrl = 'https://pann.nate.com/talk';
   const home = await fetchText(homeUrl);
-  const broadLinks = home.ok && !home.challenge ? parsePannList(home.body, home.finalUrl) : [];
+  const broadMap = new Map();
+  const listPages = [];
+  for (let pageNo = 1; pageNo <= 6; pageNo++) {
+    const pageUrl = `${homeUrl}?page=${pageNo}`;
+    const page = pageNo === 1 ? home : await fetchText(pageUrl);
+    listPages.push({ url: pageUrl, status: page.status, challenge: page.challenge, links: page.ok && !page.challenge ? parsePannList(page.body, page.finalUrl).length : 0 });
+    if (!page.ok || page.challenge) continue;
+    for (const item of parsePannList(page.body, page.finalUrl)) broadMap.set(item.url, item);
+  }
+  const broadLinks = [...broadMap.values()];
   const broad = await pannDetails(broadLinks.slice(0, SAMPLE_LIMIT));
   const concentration = {};
   for (const x of broad) {
@@ -137,13 +140,23 @@ async function runPann() {
   const refined = [];
   for (const cat of ranked) {
     const listUrl = `https://pann.nate.com/talk/${cat.id}`;
-    const page = await fetchText(listUrl);
-    const links = page.ok && !page.challenge ? parsePannList(page.body, page.finalUrl).filter(x => x.category.id === cat.id || x.category.id === 'unknown') : [];
+    const catMap = new Map();
+    let lastPage = { status: 0, challenge: false };
+    for (let pageNo = 1; pageNo <= 6; pageNo++) {
+      const page = await fetchText(`${listUrl}?page=${pageNo}`);
+      lastPage = page;
+      if (!page.ok || page.challenge) continue;
+      for (const item of parsePannList(page.body, page.finalUrl)) {
+        if (item.category.id === cat.id || item.category.id === 'unknown') catMap.set(item.url, item);
+      }
+    }
+    const links = [...catMap.values()];
     const details = await pannDetails(links.slice(0, Math.ceil(SAMPLE_LIMIT / Math.max(1, ranked.length))));
-    refined.push({ category: cat, list: { url: listUrl, status: page.status, challenge: page.challenge, links: links.length }, ...summarize(details) });
+    refined.push({ category: cat, list: { url: listUrl, status: lastPage.status, challenge: lastPage.challenge, links: links.length }, ...summarize(details) });
   }
-  console.log(JSON.stringify({ track: 'A', source: 'pann', list: { status: home.status, challenge: home.challenge, links: broadLinks.length }, broad: { ...summarize(broad), concentration: Object.values(concentration).sort((a, b) => b.TARGET - a.TARGET || b.sampled - a.sampled) }, refined }));
+  console.log(JSON.stringify({ track: 'A', source: 'pann', list: { status: home.status, challenge: home.challenge, links: broadLinks.length, pages: listPages }, broad: { ...summarize(broad), concentration: Object.values(concentration).sort((a, b) => b.TARGET - a.TARGET || b.sampled - a.sampled), examples: broad.slice(0, 12).map(x => ({ title: x.title, url: x.url, category: x.category, mediaCount: x.mediaCount, classification: x.classification, body: x.body.slice(0, 220) })) }, refined }));
 }
+import { extractListing as extractBobaListing } from '../src/sources/bobaedream.mjs';
 function extractBobaLinks(html, base) {
   const out = new Map();
   for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
@@ -180,14 +193,15 @@ async function runChzzk() {
   const links = new Map();
   for (let pageNo = 1; pageNo <= 4 && links.size < CHZZK_LIMIT * 4; pageNo++) {
     const listUrl = `https://www.bobaedream.co.kr/list?code=nsfw&page=${pageNo}`;
-    const list = await fetchText(listUrl);
+    const list = await fetchText(listUrl, { referer: 'https://www.bobaedream.co.kr/list?code=nsfw', accept: 'text/html,application/xhtml+xml' });
     if (!list.ok || list.challenge) continue;
-    for (const item of extractBobaLinks(list.body, list.finalUrl)) links.set(item.id, item);
+    const parsed = extractBobaListing(list.body, { pageUrl: list.finalUrl });
+    for (const item of parsed) links.set(item.sourcePostId, { url: item.sourceUrl, id: item.sourcePostId });
   }
   const candidates = [];
   for (const item of links.values()) {
     if (candidates.length >= CHZZK_LIMIT) break;
-    const detail = await fetchText(item.url);
+    const detail = await fetchText(item.url, { referer: 'https://www.bobaedream.co.kr/list?code=nsfw' });
     if (!detail.ok) continue;
     const iframeUrls = extractChzzk(detail.body, detail.finalUrl);
     if (iframeUrls.length) candidates.push({ ...item, detailStatus: detail.status, iframeUrls });
