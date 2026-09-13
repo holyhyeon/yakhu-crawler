@@ -191,12 +191,22 @@ function embedResources(html, base) {
 }
 async function runChzzk() {
   const links = new Map();
+  const listDiagnostics = [];
   for (let pageNo = 1; pageNo <= 4 && links.size < CHZZK_LIMIT * 4; pageNo++) {
     const listUrl = pageNo === 1 ? 'https://www.bobaedream.co.kr/list?code=nsfw' : `https://www.bobaedream.co.kr/list?code=nsfw&page=${pageNo}`;
     const list = await fetchText(listUrl, { userAgent: 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)', referer: 'https://www.bobaedream.co.kr/list?code=nsfw', accept: 'text/html,application/xhtml+xml' });
-    if (!list.ok || list.challenge) continue;
+    if (!list.ok || list.challenge) { listDiagnostics.push({ pageNo, status: list.status, bytes: list.bytes, title: list.title, challenge: list.challenge, parser: 0, fallback: 0 }); continue; }
     const parsed = extractBobaListing(list.body, { pageUrl: list.finalUrl });
-    for (const item of parsed) links.set(item.sourcePostId, { url: item.sourceUrl, id: item.sourcePostId });
+    const fallback = [];
+    for (const m of list.body.matchAll(/(?:https?:\/\/www\.bobaedream\.co\.kr)?\/view(?:\.php)?\/?\?[^"'<>\s]*code=nsfw[^"'<>\s]*No=\d+[^"'<>\s]*/gi)) {
+      const url = abs(m[0], list.finalUrl);
+      if (!url) continue;
+      const u = new URL(url); const no = u.searchParams.get('No') || u.searchParams.get('no');
+      if (no) fallback.push({ id: `nsfw:${no}`, url: `https://www.bobaedream.co.kr/view?code=nsfw&No=${no}` });
+    }
+    listDiagnostics.push({ pageNo, status: list.status, bytes: list.bytes, title: list.title, challenge: list.challenge, parser: parsed.length, fallback: [...new Set(fallback.map(x => x.id))].length });
+    const usable = parsed.length ? parsed.map(item => ({ id: item.sourcePostId, url: item.sourceUrl })) : [...new Map(fallback.map(x => [x.id, x])).values()];
+    for (const item of usable) links.set(item.id, item);
   }
   const candidates = [];
   for (const item of links.values()) {
@@ -218,7 +228,7 @@ async function runChzzk() {
     const status = publicVideo ? 'PASS' : posterOnly ? 'THUMBNAIL_ONLY' : 'BLOCKED';
     return { id: item.id, url: item.url, iframeUrls: item.iframeUrls, embeds, status };
   });
-  console.log(JSON.stringify({ track: 'B', source: 'bobaedream', sample: results.length, publicEmbedAccess: results.filter(x => x.embeds.some(e => e.ok && !e.challenge)).length, mediaExtraction: results.filter(x => x.status === 'PASS').length, thumbnailOnly: results.filter(x => x.status === 'THUMBNAIL_ONLY').length, blocked: results.filter(x => x.status === 'BLOCKED').length, results }));
+  console.log(JSON.stringify({ track: 'B', source: 'bobaedream', sample: results.length, listDiagnostics, publicEmbedAccess: results.filter(x => x.embeds.some(e => e.ok && !e.challenge)).length, mediaExtraction: results.filter(x => x.status === 'PASS').length, thumbnailOnly: results.filter(x => x.status === 'THUMBNAIL_ONLY').length, blocked: results.filter(x => x.status === 'BLOCKED').length, results }));
 }
 if (mode === 'a' || mode === 'pann' || mode === 'all') await runPann();
 if (mode === 'b' || mode === 'chzzk' || mode === 'all') await runChzzk();
