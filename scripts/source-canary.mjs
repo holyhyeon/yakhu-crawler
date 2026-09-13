@@ -1,5 +1,5 @@
-import { extractBodyText as invenBody, extractMediaUrls as invenMedia } from './src/sources/inven.mjs';
-import { extractListing as bobaListing, extractBodyText as bobaBody, extractMediaUrls as bobaMedia } from './src/sources/bobaedream.mjs';
+import { extractBodyText as invenBody, extractMediaUrls as invenMedia } from '../src/sources/inven.mjs';
+import { extractListing as bobaListing, extractBodyText as bobaBody, extractMediaUrls as bobaMedia } from '../src/sources/bobaedream.mjs';
 
 const source = process.env.CANARY_SOURCE || 'inven';
 const mode = process.env.CANARY_MODE || 'baseline';
