@@ -1,6 +1,8 @@
 name: Source preflight (temporary)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
