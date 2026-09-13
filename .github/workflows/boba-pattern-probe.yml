@@ -1,0 +1,23 @@
+name: Boba pattern probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Probe Boba detail media patterns
+        run: node scripts/boba-pattern-probe.mjs
