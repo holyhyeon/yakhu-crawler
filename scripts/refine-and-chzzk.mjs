@@ -31,7 +31,7 @@ async function fetchText(url, options = {}) {
   const started = Date.now();
   try {
     const response = await fetch(url, { redirect: 'follow', headers: {
-      'user-agent': UA,
+      'user-agent': options.userAgent || UA,
       accept: options.accept || 'text/html,application/xhtml+xml',
       referer: options.referer || undefined,
     }, signal: controller.signal });
@@ -192,8 +192,8 @@ function embedResources(html, base) {
 async function runChzzk() {
   const links = new Map();
   for (let pageNo = 1; pageNo <= 4 && links.size < CHZZK_LIMIT * 4; pageNo++) {
-    const listUrl = `https://www.bobaedream.co.kr/list?code=nsfw&page=${pageNo}`;
-    const list = await fetchText(listUrl, { referer: 'https://www.bobaedream.co.kr/list?code=nsfw', accept: 'text/html,application/xhtml+xml' });
+    const listUrl = pageNo === 1 ? 'https://www.bobaedream.co.kr/list?code=nsfw' : `https://www.bobaedream.co.kr/list?code=nsfw&page=${pageNo}`;
+    const list = await fetchText(listUrl, { userAgent: 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)', referer: 'https://www.bobaedream.co.kr/list?code=nsfw', accept: 'text/html,application/xhtml+xml' });
     if (!list.ok || list.challenge) continue;
     const parsed = extractBobaListing(list.body, { pageUrl: list.finalUrl });
     for (const item of parsed) links.set(item.sourcePostId, { url: item.sourceUrl, id: item.sourcePostId });
@@ -201,7 +201,7 @@ async function runChzzk() {
   const candidates = [];
   for (const item of links.values()) {
     if (candidates.length >= CHZZK_LIMIT) break;
-    const detail = await fetchText(item.url, { referer: 'https://www.bobaedream.co.kr/list?code=nsfw' });
+    const detail = await fetchText(item.url, { userAgent: 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)', referer: 'https://www.bobaedream.co.kr/list?code=nsfw' });
     if (!detail.ok) continue;
     const iframeUrls = extractChzzk(detail.body, detail.finalUrl);
     if (iframeUrls.length) candidates.push({ ...item, detailStatus: detail.status, iframeUrls });
