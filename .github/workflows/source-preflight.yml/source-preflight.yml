@@ -1,0 +1,110 @@
+name: SLR model gallery preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: Number of recent list pages to sample
+        required: false
+        default: '10'
+        type: string
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe public SLR model gallery
+        env:
+          SAMPLE_PAGES: ${{ inputs.pages || '10' }}
+        run: |
+          node <<'NODE'
+          const LIST = 'https://m.slrclub.com/l/theme_gallery/C3';
+          const UA = 'Mozilla/5.0 (compatible; MeuheutPublicPreflight/1.0)';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          async function fetchHtml(url, referer = LIST) {
+            const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'ko-KR,ko;q=0.9', referer }, redirect: 'follow', signal: AbortSignal.timeout(15000) });
+            const html = await res.text();
+            return { url: res.url, status: res.status, type: res.headers.get('content-type') || '', html };
+          }
+          function decode(s) {
+            return String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          }
+          function absolute(raw, base) { try { return new URL(raw, base).href; } catch { return null; } }
+          function listItems(html, base = LIST) {
+            const out = new Map();
+            for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']*\/v\/theme_gallery\/C3\/(\d+))[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+              const id = m[2];
+              const title = decode(m[3]).slice(0, 200);
+              if (id && title && !out.has(id)) out.set(id, { id, title, url: absolute(m[1], base) || ('https://m.slrclub.com/v/theme_gallery/C3/' + id) });
+            }
+            return [...out.values()];
+          }
+          function pageLinks(html, base = LIST) {
+            const out = [];
+            for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']*\/l\/theme_gallery\/C3\/\d+)[^"']*["']/gi)) {
+              const u = absolute(m[1], base); if (u && !out.includes(u)) out.push(u);
+            }
+            return out;
+          }
+          function detailDate(text) {
+            let m = text.match(/(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})(?:[^\d]{0,20}(\d{1,2}):(\d{2}))?/);
+            if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] - 9 : 0, m[5] ? +m[5] : 0)).toISOString();
+            m = text.match(/(\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/);
+            if (m) return new Date(Date.UTC(2000 + +m[1], +m[2] - 1, +m[3])).toISOString();
+            return null;
+          }
+          function detailMedia(html, pageUrl) {
+            const marker = html.toLowerCase().indexOf('userct');
+            const end = html.toLowerCase().indexOf('comment', Math.max(marker, 0));
+            const scope = marker >= 0 ? html.slice(marker, end > marker ? end : marker + 250000) : html;
+            const urls = [];
+            for (const m of scope.matchAll(/<(?:img|video|source)\b[^>]*(?:src|data-src|data-original)=["']([^"']+)["'][^>]*>/gi)) {
+              const u = absolute(m[1], pageUrl); if (u && !/logo|icon|avatar|banner|ad[s_\/-]|copyright/i.test(u) && !urls.includes(u)) urls.push(u);
+            }
+            return urls;
+          }
+          function classify(title, mediaCount) {
+            if (!mediaCount) return 'NON_TARGET';
+            const bad = /공지|광고|이벤트|모터\s*사이클|자동차|차량|카메라|렌즈|장비|남자|남성|소년|아이|가족|동물|풍경|꽃|음식|제품|건물|야경|일출|새|조류/i.test(title);
+            const good = /모델|패션|화보|출사|촬영|스튜디오|비키니|수영복|드레스|패션위크|모터쇼|레이싱|치어|그녀|여성|여자|인물|바디프로필|언더웨어|한복|소망|세하|유니|율리아|하빈|벨라|아카리|주연/i.test(title);
+            if (bad && !good) return 'NON_TARGET';
+            if (good || !bad) return 'TARGET';
+            return 'AMBIGUOUS';
+          }
+          async function mapLimit(items, limit, fn) {
+            const out = new Array(items.length); let next = 0;
+            async function worker() { while (true) { const i = next++; if (i >= items.length) return; out[i] = await fn(items[i], i); } }
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker)); return out;
+          }
+          const pages = Math.max(1, Math.min(15, Number(process.env.SAMPLE_PAGES || 10)));
+          const listResults = [];
+          const first = await fetchHtml(LIST);
+          listResults.push({ url: first.url, status: first.status, type: first.type, bytes: Buffer.byteLength(first.html) });
+          const urls = [LIST, ...pageLinks(first.html).slice(0, pages - 1)];
+          for (let i = 1; i < urls.length; i++) { await sleep(150); try { const r = await fetchHtml(urls[i], LIST); listResults.push({ url: r.url, status: r.status, type: r.type, bytes: Buffer.byteLength(r.html) }); } catch (e) { listResults.push({ url: urls[i], error: String(e.message || e) }); } }
+          const all = new Map();
+          for (let i = 0; i < urls.length; i++) { try { const r = i === 0 ? first : await fetchHtml(urls[i], LIST); for (const item of listItems(r.html, r.url)) all.set(item.id, item); } catch {} }
+          const items = [...all.values()].slice(0, 180);
+          let detailSuccess = 0, detailFailure = 0;
+          const rows = await mapLimit(items, 4, async (item) => {
+            await sleep(120);
+            try {
+              const r = await fetchHtml(item.url, item.url); if (r.status < 200 || r.status >= 300) throw new Error('status_' + r.status);
+              const text = decode(r.html).slice(0, 300000); const media = detailMedia(r.html, r.url); detailSuccess++;
+              return { ...item, finalUrl: r.url, publishedAt: detailDate(text), mediaCount: media.length, media: media.slice(0, 3), classification: classify(item.title, media.length) };
+            } catch (e) { detailFailure++; return { ...item, classification: 'DETAIL_ERROR', error: String(e.message || e) }; }
+          });
+          const mediaChecks = [];
+          for (const row of rows.filter((x) => x.media?.length).slice(0, 5)) {
+            try { const r = await fetch(row.media[0], { headers: { 'user-agent': UA, referer: row.finalUrl }, redirect: 'follow', signal: AbortSignal.timeout(10000) }); mediaChecks.push({ id: row.id, status: r.status, type: r.headers.get('content-type') || '', url: row.media[0] }); } catch (e) { mediaChecks.push({ id: row.id, error: String(e.message || e) }); }
+          }
+          const counts = rows.reduce((a, r) => { a[r.classification] = (a[r.classification] || 0) + 1; return a; }, {});
+          const dates = rows.map((r) => r.publishedAt).filter(Boolean).sort();
+          const summary = { source: 'slrclub', board: 'theme_gallery/C3', runtime: 'ubuntu-latest Node 22 native fetch', sampled: rows.length, listRequests: listResults.length, listFailures: listResults.filter((x) => x.error || x.status < 200 || x.status >= 300).length, detailSuccess, detailFailure, counts, newest: dates.at(-1) || null, oldest: dates[0] || null, targetTitles: rows.filter((r) => r.classification === 'TARGET').slice(0, 12).map((r) => ({ id: r.id, title: r.title, mediaCount: r.mediaCount, publishedAt: r.publishedAt })), ambiguousTitles: rows.filter((r) => r.classification === 'AMBIGUOUS').slice(0, 8).map((r) => ({ id: r.id, title: r.title, mediaCount: r.mediaCount })), nonTargetTitles: rows.filter((r) => r.classification === 'NON_TARGET').slice(0, 8).map((r) => ({ id: r.id, title: r.title, mediaCount: r.mediaCount })), mediaChecks };
+          console.log(JSON.stringify(summary));
+          NODE
