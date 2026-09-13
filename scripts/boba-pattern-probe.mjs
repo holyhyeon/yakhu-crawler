@@ -17,21 +17,23 @@ function normalizedUrl(raw, base) {
 }
 function summarize(html, base) {
   const source = String(html || '');
-  const tags = [...source.matchAll(/<(img|video|source|a|iframe|script)[ >]/gi)];
+  const tags = [...source.matchAll(/<(img|video|source|a|iframe|script)[^>]*>/gi)];
   const tagCounts = {};
   const attrCounts = {};
   const samples = [];
+  const allAttrSamples = [];
   let mediaHostHits = 0;
   for (const m of tags) {
     const tagName = m[1].toLowerCase();
     tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
-    const attrs = m[0] || '';
+    const fullTag = m[0] || '';
     for (const name of ['src','data-src','data-original','data-lazy-src','lazy-src','href','poster','style']) {
-      if (attrs.toLowerCase().includes(name.toLowerCase() + '=')) attrCounts[name] = (attrCounts[name] || 0) + 1;
-      const raw = attr(m[0], name);
+      const raw = attr(fullTag, name);
       if (!raw) continue;
+      attrCounts[name] = (attrCounts[name] || 0) + 1;
       const u = normalizedUrl(raw, base);
       if (!u) continue;
+      if (allAttrSamples.length < 30) allAttrSamples.push({ tag: tagName, attr: name, host: u.host, path: u.path.slice(0, 160), ext: u.ext });
       if (/file\\d*\\.bobaedream\\.co\\.kr/i.test(u.host) || /(?:upload|attach|image|img|media|files|photo)/i.test(u.path)) {
         mediaHostHits++;
         if (samples.length < 8) samples.push({ tag: tagName, attr: name, host: u.host, path: u.path.slice(0, 140), ext: u.ext });
@@ -44,11 +46,11 @@ function summarize(html, base) {
   const escapedTagCounts = {};
   for (const tag of ['img','video','source','iframe','a']) escapedTagCounts[tag] = lower.split('&lt;' + tag).length - 1;
   const snippets = [];
-  for (const marker of ['content_video','chzzk','videoid','data-url','data-file','iframe','player']) {
+  for (const marker of ['<video','<source','<iframe','file1.bobaedream','src=','data-src','data-original','content_video','chzzk']) {
     const index = lower.indexOf(marker);
-    if (index >= 0) snippets.push({ marker, text: source.slice(Math.max(0, index - 80), index + 280).replaceAll('\\n', ' ').replaceAll('\\r', ' ') });
+    if (index >= 0) snippets.push({ marker, text: source.slice(Math.max(0, index - 100), index + 360).replaceAll('\\n', ' ').replaceAll('\\r', ' ') });
   }
-  return { tagCounts, attrCounts, mediaHostHits, samples, signalCounts, escapedTagCounts, snippets };
+  return { tagCounts, attrCounts, mediaHostHits, samples, allAttrSamples, signalCounts, escapedTagCounts, snippets };
 }
 async function get(url, referer) {
   const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'ko-KR,ko;q=0.9', referer }, redirect: 'follow', signal: AbortSignal.timeout(15000) });
