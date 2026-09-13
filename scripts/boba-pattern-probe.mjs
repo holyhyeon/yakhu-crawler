@@ -5,7 +5,8 @@ const UA = 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function attr(tag, name) {
-  const m = String(tag || '').match(new RegExp('\\\\b' + name + '\\s*=\\s*(["\\'])([\\s\\S]*?)\\1', 'i'));
+  const text = String(tag || '');
+  const m = text.match(new RegExp(name + '=([\\x22\\x27])([\\s\\S]*?)\\1', 'i'));
   return m ? m[2].replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'") : '';
 }
 function normalizedUrl(raw, base) {
