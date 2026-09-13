@@ -7,6 +7,7 @@ const sampleLimit = Math.min(200, Math.max(100, Number(process.env.PREFLIGHT_LIM
 const sources = {
   fomos: { list: 'https://www.fomos.kr/talk/article_list/?bbs_id=5', links: /\/talk\/article_view[^"'<> ]*/i, detail: (h) => new URL(h, 'https://www.fomos.kr').href },
   ygosu: { list: 'https://www.ygosu.com/board/yeobgi', links: /\/board\/yeobgi\/[^"'<> ]*/i, detail: (h) => new URL(h, 'https://www.ygosu.com').href },
+  ygosu_adultpic: { list: 'https://ygosu.com/board/adultpic', links: /\/board\/adultpic\/\d+/i, detail: (h) => new URL(h, 'https://ygosu.com').href },
   quasarzone: { list: 'https://quasarzone.com/bbs/qb_humor', links: /\/bbs\/qb_humor\/views\/\d+/i, detail: (h) => new URL(h, 'https://quasarzone.com').href },
   dogdrip_girlgroup: { list: 'https://www.dogdrip.net/girlgroup', links: /\/(?:girlgroup|dogdrip)\/\d+/i, detail: (h) => new URL(h, 'https://www.dogdrip.net').href },
   pann: { list: 'https://pann.nate.com/talk', links: /\/talk\/[^"'<> ]+/i, detail: (h) => new URL(h, 'https://pann.nate.com').href },
