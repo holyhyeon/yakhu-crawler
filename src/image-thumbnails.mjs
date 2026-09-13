@@ -32,12 +32,13 @@ async function frameLooksBlack(inputPath, timestamp) {
   try {
     const result = await execFileAsync('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-ss', String(timestamp), '-i', inputPath,
-      '-frames:v', '1', '-vf', 'scale=1:1,format=gray', '-f', 'rawvideo', '-',
+      '-frames:v', '1', '-vf', 'scale=16:16,format=gray', '-f', 'rawvideo', '-',
     ], { maxBuffer: 1024, encoding: 'buffer' });
     const bytes = Buffer.from(result.stdout);
     if (!bytes.length) return true;
     const average = bytes.reduce((sum, value) => sum + value, 0) / bytes.length;
-    return average <= 12 && Math.max(...bytes) <= 24;
+    const brightFraction = bytes.filter((value) => value > 48).length / bytes.length;
+    return average <= 32 && brightFraction <= 0.12;
   } catch {
     return false;
   }
