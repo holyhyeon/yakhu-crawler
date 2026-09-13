@@ -1,7 +1,7 @@
 const LIST_URL = 'https://www.bobaedream.co.kr/list?code=nsfw';
 const BOARD_CODE = 'nsfw';
 const SOURCE_AGENT = 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)';
-const PAGE_CAP = 2;
+const PAGE_CAP = 4;
 const CANDIDATES_PER_PAGE = 15;
 const DETAIL_CONCURRENCY = 2;
 const DETAIL_DELAY_MS = 300;
@@ -320,6 +320,8 @@ export async function collectBobaedream({ pages = 1 } = {}) {
 
   let detailSuccess = 0;
   let detailFailure = 0;
+  let unsupportedEmbed = 0;
+  let mediaUrlMissing = 0;
   const detailRows = await mapLimit([...discovered.values()], DETAIL_CONCURRENCY, async (candidate) => {
     await sleep(DETAIL_DELAY_MS);
     if (blocked) return null;
@@ -327,6 +329,10 @@ export async function collectBobaedream({ pages = 1 } = {}) {
       const result = await fetchText(candidate.sourceUrl, candidate.sourceUrl);
       const mediaUrls = extractMediaUrls(result.html, { pageUrl: result.url });
       detailSuccess++;
+      if (mediaUrls.length === 0) {
+        if (/chzzk\.naver\.com/i.test(result.html)) unsupportedEmbed++;
+        else mediaUrlMissing++;
+      }
       return {
         ...candidate,
         bodyText: extractBodyText(result.html),
@@ -342,7 +348,7 @@ export async function collectBobaedream({ pages = 1 } = {}) {
       return null;
     }
   });
-  const candidates = detailRows.filter(Boolean);
+  const candidates = detailRows.filter((row) => row && row.mediaUrls.length > 0);
   return {
     candidates,
     metrics: {
@@ -351,6 +357,10 @@ export async function collectBobaedream({ pages = 1 } = {}) {
       detailFailure,
       pageFailures,
       candidates: candidates.length,
+      mediaSuccess: candidates.length,
+      unsupported_embed: unsupportedEmbed,
+      media_url_missing: mediaUrlMissing,
+      errors: detailFailure + pageFailures,
       mediaDetected: candidates.filter((item) => item.mediaUrls.length > 0).length,
       mediaTotal: candidates.reduce((total, item) => total + item.mediaUrls.length, 0),
       blocked,
