@@ -10,6 +10,9 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,5 +24,5 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Fixture tests
         run: npm run test:fixture
-      - name: Probe Boba detail media patterns
-        run: node scripts/boba-pattern-probe.mjs
+      - name: Boba 4-page canary
+        run: node boba-canary.mjs
