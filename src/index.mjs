@@ -1,14 +1,23 @@
 import { collectBobaedream } from './sources/bobaedream.mjs';
-import { collectInven } from './sources/inven.mjs';
+import { collectInven, collectInvenCategory } from './sources/inven.mjs';
 import { sendToSite } from './ingest.mjs';
 
 const pages = process.env.CRAWL_PAGES || '3';
 const requestedSource = (process.env.CRAWL_SOURCE || 'inven').toLowerCase();
 const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
+const categorySources = {
+  inven_cheer_gif: { board: 'party/6296', category: '움짤', label: '치어리더 움짤' },
+  inven_game_model: { board: 'webzine/2898', category: '게임모델', label: '게임모델' },
+};
+const categorySourceIds = Object.keys(categorySources);
 const sourceIds = requestedSource === 'all'
-  ? ['inven', 'bobaedream']
+  ? ['inven', 'bobaedream', ...categorySourceIds]
+  : requestedSource === 'inven_categories'
+    ? categorySourceIds
   : requestedSource === 'bobaedream'
     ? ['bobaedream']
+    : categorySources[requestedSource]
+      ? [requestedSource]
     : ['inven'];
 
 if (!process.env.YAKHU_SITE_URL && !dryRun) {
@@ -21,6 +30,8 @@ if (!process.env.YAKHU_SITE_URL && !dryRun) {
     try {
       crawl = source === 'bobaedream'
         ? await collectBobaedream({ pages })
+        : categorySources[source]
+          ? await collectInvenCategory({ ...categorySources[source], pages })
         : await collectInven({ pages });
     } catch (error) {
       console.error(JSON.stringify({

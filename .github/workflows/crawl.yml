@@ -12,6 +12,9 @@ on:
         type: choice
         options:
           - 'inven'
+          - 'inven_categories'
+          - 'inven_cheer_gif'
+          - 'inven_game_model'
           - 'bobaedream'
           - 'all'
       pages:

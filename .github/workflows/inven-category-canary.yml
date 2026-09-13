@@ -29,5 +29,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Run bounded Inven category canary
-        run: node scripts/inven-category-canary.mjs
+      - name: Run bounded Inven category adapter canary
+        run: node scripts/inven-category-adapter-canary.mjs
