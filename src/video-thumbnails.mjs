@@ -9,6 +9,8 @@ const siteUrl = process.env.YAKHU_SITE_URL;
 const secret = process.env.YAKHU_INGEST_SECRET;
 const limit = Math.min(25, Math.max(1, Number(process.env.VIDEO_THUMBNAIL_LIMIT || 5)));
 const cursor = process.env.VIDEO_THUMBNAIL_CURSOR || '';
+const mediaId = process.env.VIDEO_THUMBNAIL_MEDIA_ID || '';
+const postId = process.env.VIDEO_THUMBNAIL_POST_ID || '';
 const requestTimeout = 60_000;
 const posterFilter = "scale=w='if(gte(iw,ih),min(640,iw),-2)':h='if(gte(iw,ih),-2,min(640,ih))'";
 
@@ -29,10 +31,26 @@ async function run(program, args) {
   return execFileAsync(program, args, { maxBuffer: 2_000_000 });
 }
 
+async function frameLooksBlack(inputPath, timestamp) {
+  try {
+    const result = await execFileAsync('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-ss', String(timestamp), '-i', inputPath,
+      '-frames:v', '1', '-vf', 'scale=1:1,format=gray', '-f', 'rawvideo', '-',
+    ], { maxBuffer: 1024, encoding: 'buffer' });
+    const bytes = Buffer.from(result.stdout);
+    if (!bytes.length) return true;
+    const average = bytes.reduce((sum, value) => sum + value, 0) / bytes.length;
+    return average <= 12 && Math.max(...bytes) <= 24;
+  } catch {
+    return false;
+  }
+}
+
 async function extractPoster(inputPath, outputPath) {
-  const attempts = [0.3, 0.1, 1.0];
+  const attempts = [0.3, 1.0, 2.0];
   let lastError = 'frame_extract_failed';
-  for (const timestamp of attempts) {
+  for (let index = 0; index < attempts.length; index += 1) {
+    const timestamp = attempts[index];
     try {
       await run('ffmpeg', [
         '-hide_banner', '-loglevel', 'error', '-ss', String(timestamp), '-i', inputPath,
@@ -40,13 +58,15 @@ async function extractPoster(inputPath, outputPath) {
       ]);
       const output = await stat(outputPath);
       if (output.size > 0) {
+        const black = await frameLooksBlack(inputPath, timestamp);
+        if (black && index < attempts.length - 1) continue;
         const probe = await run('ffprobe', [
           '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', outputPath,
         ]);
         const parsed = JSON.parse(probe.stdout);
         const stream = parsed.streams?.[0];
         if (Number.isInteger(stream?.width) && Number.isInteger(stream?.height)) {
-          return { timestamp, width: stream.width, height: stream.height, size: output.size };
+          return { timestamp, width: stream.width, height: stream.height, size: output.size, blackFrameFallback: index > 0 };
         }
       }
     } catch (error) {
@@ -76,6 +96,7 @@ async function processOne(item, directory) {
   form.set('width', String(poster.width));
   form.set('height', String(poster.height));
   form.set('frameTimestamp', String(poster.timestamp));
+  if (mediaId || postId) form.set('replace', '1');
   form.set('poster', new Blob([await readFile(outputPath)], { type: 'image/webp' }), `${item.id}.webp`);
   const upload = await requestJson(new URL('/api/video-thumbnails/upload', siteUrl), { method: 'POST', body: form });
   return { ...poster, status: upload.status ?? 'generated', thumbnailObjectKey: upload.thumbnailObjectKey ?? null };
@@ -84,6 +105,8 @@ async function processOne(item, directory) {
 const queueUrl = new URL('/api/video-thumbnails/queue', siteUrl);
 queueUrl.searchParams.set('limit', String(limit));
 if (cursor) queueUrl.searchParams.set('cursor', cursor);
+if (mediaId) queueUrl.searchParams.set('mediaId', mediaId);
+else if (postId) queueUrl.searchParams.set('postId', postId);
 const queue = await requestJson(queueUrl);
 const items = Array.isArray(queue.items) ? queue.items : [];
 const directory = await mkdtemp(join(tmpdir(), 'yakhu-video-thumbnail-'));

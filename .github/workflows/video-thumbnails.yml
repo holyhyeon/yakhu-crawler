@@ -23,6 +23,16 @@ on:
         required: false
         default: ''
         type: string
+      mediaId:
+        description: 'Optional video media id to regenerate'
+        required: false
+        default: ''
+        type: string
+      postId:
+        description: 'Optional post id whose video posters should regenerate'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: video-thumbnail-backfill
@@ -41,6 +51,8 @@ jobs:
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
       VIDEO_THUMBNAIL_LIMIT: ${{ inputs.limit || '25' }}
       VIDEO_THUMBNAIL_CURSOR: ${{ inputs.cursor || '' }}
+      VIDEO_THUMBNAIL_MEDIA_ID: ${{ inputs.mediaId || '' }}
+      VIDEO_THUMBNAIL_POST_ID: ${{ inputs.postId || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
