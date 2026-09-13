@@ -30,8 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PREFLIGHT_MODE: ${{ inputs.mode || 'sample' }}
-      PREFLIGHT_SOURCE: ${{ inputs.source || 'pann' }}
+      PREFLIGHT_MODE: ${{ inputs.mode || 'preflight' }}
+      PREFLIGHT_SOURCE: ${{ inputs.source || 'all' }}
       PREFLIGHT_LIMIT: ${{ inputs.limit || '120' }}
     steps:
       - uses: actions/checkout@v4

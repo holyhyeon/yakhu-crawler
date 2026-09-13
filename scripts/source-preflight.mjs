@@ -85,7 +85,8 @@ async function mapLimit(items, limit, fn) {
 async function runSource(id) {
   const def = sources[id];
   const list = await fetchText(def.list);
-  const links = list.ok && !list.challenge ? extractLinks(list.body, def, new URL(def.list)) : [];
+  const usableList = list.ok && !/(?:just a moment|access denied|captcha)/i.test(list.title);
+  const links = usableList ? extractLinks(list.body, def, new URL(def.list)) : [];
   const selected = links.slice(0, mode === 'sample' ? sampleLimit : 3);
   const details = await mapLimit(selected, 4, async (item) => {
     const result = await fetchText(def.detail(item.url));
