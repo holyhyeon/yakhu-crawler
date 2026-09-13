@@ -2,6 +2,7 @@ const LIST_URL = "https://www.inven.co.kr/board/webzine/2097";
 const SOURCE_AGENT = "Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)";
 const PAGE_CAP = 3;
 const CANDIDATE_CAP = 15;
+const MEDIA_CAP = 20;
 const CATEGORY_PAGE_CAP = 2;
 const CATEGORY_CANDIDATE_CAP = 15;
 const DETAIL_CONCURRENCY = 2;
@@ -83,7 +84,12 @@ export function extractMediaUrls(html) {
       if (parsed.protocol === "https:" && /^upload\d*\.inven\.co\.kr$/i.test(parsed.hostname) && /^\/upload\//i.test(parsed.pathname)) urls.push(parsed.href);
     } catch {}
   }
-  return [...new Set(urls)].slice(0, 3);
+  return [...new Set(urls)].slice(0, MEDIA_CAP);
+}
+
+export function extractDetailTitle(html) {
+  const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '';
+  return plainText(heading).slice(0, 300);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -102,7 +108,33 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
-export async function collectInven({ pages = 3 } = {}) {
+export async function collectInven({ pages = 3, postId = '' } = {}) {
+  if (postId) {
+    const sourcePostId = String(postId).trim();
+    if (!/^\d+$/.test(sourcePostId)) {
+      return { candidates: [], metrics: { discovered: 0, detailSuccess: 0, detailFailure: 0, pageFailures: 0, candidates: 0 } };
+    }
+    const sourceUrl = new URL(`/board/webzine/2097/${sourcePostId}`, 'https://www.inven.co.kr').href;
+    try {
+      const html = await fetchText(sourceUrl, LIST_URL);
+      const title = extractDetailTitle(html) || `Inven ${sourcePostId}`;
+      return {
+        candidates: [{
+          source: 'inven',
+          sourcePostId,
+          sourceUrl,
+          title,
+          category: '인벤',
+          bodyText: extractBodyText(html),
+          publishedAt: null,
+          mediaUrls: extractMediaUrls(html),
+        }],
+        metrics: { discovered: 1, detailSuccess: 1, detailFailure: 0, pageFailures: 0, candidates: 1 },
+      };
+    } catch {
+      return { candidates: [], metrics: { discovered: 1, detailSuccess: 0, detailFailure: 1, pageFailures: 0, candidates: 0 } };
+    }
+  }
   const pageCount = Math.min(PAGE_CAP, Math.max(1, Number.isFinite(Number(pages)) ? Math.floor(Number(pages)) : PAGE_CAP));
   const discovered = new Map();
   let pageFailures = 0;

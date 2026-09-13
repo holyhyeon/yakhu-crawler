@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { extractBodyText, extractListing, extractMediaUrls } from './inven.mjs';
+import { extractBodyText, extractDetailTitle, extractListing, extractMediaUrls } from './inven.mjs';
 
 const listing = extractListing(
   '<a href="/board/webzine/2097/2725741"> 비키니 모델 화보 </a>' +
@@ -20,11 +20,17 @@ assert.equal(categoryListing[0].category, '치어리더 움짤');
 
 const detail = '<div id="powerbbsContent"><p>본문 설명</p>' +
   '<img src="https://upload2.inven.co.kr/upload/2026/09/10/example.jpg">' +
-  '<video><source data-src="https://upload3.inven.co.kr/upload/2026/09/10/example.mp4"></video></div></div>';
+  '<img data-src="https://upload2.inven.co.kr/upload/2026/09/10/example-small.webp">' +
+  '<img src="https://upload3.inven.co.kr/upload/2026/09/10/example.webp">' +
+  '<video><source data-src="https://upload3.inven.co.kr/upload/2026/09/10/example.mp4"></video></div></div>' +
+  '<h1>ㅇㅎ) 저 자연산 E컵이에요.</h1>';
 assert.match(extractBodyText(detail), /본문 설명/);
 assert.deepEqual(extractMediaUrls(detail), [
   'https://upload2.inven.co.kr/upload/2026/09/10/example.jpg',
+  'https://upload2.inven.co.kr/upload/2026/09/10/example-small.webp',
+  'https://upload3.inven.co.kr/upload/2026/09/10/example.webp',
   'https://upload3.inven.co.kr/upload/2026/09/10/example.mp4',
 ]);
+assert.equal(extractDetailTitle(detail), 'ㅇㅎ) 저 자연산 E컵이에요.');
 
 console.log('inven fixture ok');

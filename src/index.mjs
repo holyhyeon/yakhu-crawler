@@ -3,6 +3,7 @@ import { collectInven, collectInvenCategory } from './sources/inven.mjs';
 import { sendToSite } from './ingest.mjs';
 
 const pages = process.env.CRAWL_PAGES || '3';
+const postId = process.env.CRAWL_POST_ID || '';
 const requestedSource = (process.env.CRAWL_SOURCE || 'inven').toLowerCase();
 const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const categorySources = {
@@ -32,7 +33,7 @@ if (!process.env.YAKHU_SITE_URL && !dryRun) {
         ? await collectBobaedream({ pages })
         : categorySources[source]
           ? await collectInvenCategory({ ...categorySources[source], pages })
-        : await collectInven({ pages });
+        : await collectInven({ pages, postId });
     } catch (error) {
       console.error(JSON.stringify({
         source,

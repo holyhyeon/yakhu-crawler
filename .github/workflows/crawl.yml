@@ -27,6 +27,11 @@ on:
           - '2'
           - '3'
           - '4'
+      postId:
+        description: 'Optional single Inven post id for targeted media repair'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: community-crawl
@@ -44,6 +49,7 @@ jobs:
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
       CRAWL_SOURCE: ${{ inputs.source || 'all' }}
       CRAWL_PAGES: ${{ inputs.pages || '4' }}
+      CRAWL_POST_ID: ${{ inputs.postId || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
