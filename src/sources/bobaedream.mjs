@@ -76,6 +76,16 @@ function articleRoot(html) {
     || balancedElement(source, 'div', 'conView');
 }
 
+function articleMarkerScope(html) {
+  const source = String(html || '');
+  const open = /<div\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:print[_-]?area|content02|bodyCont)[^"']*["'][^>]*>/i.exec(source);
+  if (!open || open.index == null) return '';
+  const start = open.index;
+  const bodyEnd = /<!--\s*본문\s*끝\s*-->/i.exec(source.slice(start + open[0].length));
+  if (!bodyEnd) return '';
+  return source.slice(start, start + open[0].length + bodyEnd.index);
+}
+
 function boardListRoot(html) {
   const source = String(html || '');
   return balancedElement(source, 'table', 'boardlist', 'id')
@@ -182,7 +192,7 @@ function mediaUrlAllowed(url) {
 }
 
 export function extractMediaUrls(html, { pageUrl } = {}) {
-  const root = articleRoot(html);
+  const root = articleMarkerScope(html) || articleRoot(html);
   const urls = [];
   for (const tagMatch of root.matchAll(/<(?:img|video|source|a)\b[^>]*>/gi)) {
     const tag = tagMatch[0];
