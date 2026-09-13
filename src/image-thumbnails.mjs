@@ -31,10 +31,17 @@ async function run(program, args) {
 async function frameLooksBlack(inputPath, timestamp) {
   try {
     const result = await execFileAsync('ffmpeg', [
+      '-hide_banner', '-loglevel', 'info', '-ss', String(timestamp), '-i', inputPath,
+      '-frames:v', '1', '-vf', 'blackdetect=d=0:pix_th=0.20:pic_th=0.98', '-f', 'null', '-',
+    ], { maxBuffer: 1_000_000, encoding: 'utf8' });
+    const diagnostic = `${result.stderr ?? ''}\n${result.stdout ?? ''}`;
+    if (/black_start:/i.test(diagnostic)) return true;
+
+    const pixels = await execFileAsync('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-ss', String(timestamp), '-i', inputPath,
       '-frames:v', '1', '-vf', 'scale=16:16,format=gray', '-f', 'rawvideo', '-',
     ], { maxBuffer: 1024, encoding: 'buffer' });
-    const bytes = Buffer.from(result.stdout);
+    const bytes = Buffer.from(pixels.stdout);
     if (!bytes.length) return true;
     const average = bytes.reduce((sum, value) => sum + value, 0) / bytes.length;
     const brightFraction = bytes.filter((value) => value > 48).length / bytes.length;
