@@ -30,11 +30,10 @@ async function fetchText(url, options = {}) {
   const timer = setTimeout(() => controller.abort(), options.timeout || TIMEOUT_MS);
   const started = Date.now();
   try {
-    const response = await fetch(url, { redirect: 'follow', headers: {
-      'user-agent': options.userAgent || UA,
-      accept: options.accept || 'text/html,application/xhtml+xml',
-      referer: options.referer || undefined,
-    }, signal: controller.signal });
+    const headers = { 'user-agent': options.userAgent || UA };
+    if (options.accept) headers.accept = options.accept;
+    if (options.referer) headers.referer = options.referer;
+    const response = await fetch(url, { redirect: 'follow', headers, signal: controller.signal });
     const body = await response.text();
     const title = cleanText(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(body)?.[1] || '').slice(0, 160);
     const head = body.slice(0, 240000).toLowerCase();
@@ -194,7 +193,7 @@ async function runChzzk() {
   const listDiagnostics = [];
   for (let pageNo = 1; pageNo <= 4 && links.size < CHZZK_LIMIT * 4; pageNo++) {
     const listUrl = pageNo === 1 ? 'https://www.bobaedream.co.kr/list?code=nsfw' : `https://www.bobaedream.co.kr/list?code=nsfw&page=${pageNo}`;
-    const list = await fetchText(listUrl, { userAgent: 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)', referer: 'https://www.bobaedream.co.kr/list?code=nsfw', accept: 'text/html,application/xhtml+xml' });
+    const list = await fetchText(listUrl, { userAgent: 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)', referer: 'https://www.bobaedream.co.kr/list?code=nsfw' });
     if (!list.ok || list.challenge) { listDiagnostics.push({ pageNo, status: list.status, bytes: list.bytes, title: list.title, challenge: list.challenge, parser: 0, fallback: 0 }); continue; }
     const parsed = extractBobaListing(list.body, { pageUrl: list.finalUrl });
     const fallback = [];

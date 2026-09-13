@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      RESEARCH_MODE: ${{ inputs.mode || 'all' }}
+      RESEARCH_MODE: ${{ inputs.mode || 'chzzk' }}
       RESEARCH_LIMIT: ${{ inputs.limit || '120' }}
       CHZZK_LIMIT: ${{ inputs.chzzk_limit || '8' }}
     steps:
