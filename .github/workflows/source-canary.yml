@@ -38,7 +38,8 @@ jobs:
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run bounded canary
-        run: node --input-type=module <<'NODE'
+        run: |
+          node --input-type=module <<'NODE'
           import { extractBodyText as invenBody, extractMediaUrls as invenMedia } from './src/sources/inven.mjs';
           import { extractListing as bobaListing, extractBodyText as bobaBody, extractMediaUrls as bobaMedia } from './src/sources/bobaedream.mjs';
 
@@ -271,4 +272,3 @@ jobs:
           const probe = source === 'bobaedream' ? await probeBobaFailures(result.rows, ingestResult) : {};
           console.log(JSON.stringify({ source, mode, ...result.metrics, ...ingestResult, failureProbe: probe }));
         NODE
-
