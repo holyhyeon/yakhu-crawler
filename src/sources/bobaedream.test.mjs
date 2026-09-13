@@ -38,6 +38,32 @@ assert.match(extractBodyText(detail), /본문에 남긴 설명입니다/);
 const tenMedia = `<div class="print_area">${Array.from({ length: 10 }, (_, index) => `<img src="https://file1.bobaedream.co.kr/nsfw/example-${index + 10}.jpg">`).join('')}</div>`;
 assert.equal(extractMediaUrls(tenMedia, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014' }).length, 10);
 
+const markerScopedDetail = `
+  <div id="print_area">
+    <script>const template = "<div class='script-only'>";</script>
+    <div class="bodyCont">
+      <p><a href="#inlineContent"><img src="https://file1.bobaedream.co.kr/nsfw/fallback-image.jpg"></a></p>
+      <video><source src="https://file1.bobaedream.co.kr/nsfw/fallback-video.mp4"></video>
+    </div>
+    <!-- 본문 끝 -->
+  </div>
+`;
+assert.deepEqual(extractMediaUrls(markerScopedDetail, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8015' }), [
+  'https://file1.bobaedream.co.kr/nsfw/fallback-image.jpg',
+  'https://file1.bobaedream.co.kr/nsfw/fallback-video.mp4',
+]);
+
+const markerScopedAttachment = `
+  <div class="content02">
+    <script>const template = "<div class='script-only'>";</script>
+    <p><a href="https://file1.bobaedream.co.kr/nsfw/fallback-attachment.webp">첨부 원본</a></p>
+    <!-- 본문 끝 -->
+  </div>
+`;
+assert.deepEqual(extractMediaUrls(markerScopedAttachment, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8016' }), [
+  'https://file1.bobaedream.co.kr/nsfw/fallback-attachment.webp',
+]);
+
 assert.doesNotMatch(extractBodyText(detail), /navigation|관련글|댓글|footer|광고/);
 assert.deepEqual(extractMediaUrls(detail, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014' }), [
   'https://file1.bobaedream.co.kr/nsfw/example-1.gif',
