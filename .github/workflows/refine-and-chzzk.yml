@@ -1,0 +1,42 @@
+name: Refine candidate and inspect CHZZK (temporary)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Research mode
+        required: false
+        default: all
+        type: choice
+        options: [all, pann, chzzk]
+      limit:
+        description: Pann sample size (100-200)
+        required: false
+        default: '120'
+        type: string
+      chzzk_limit:
+        description: CHZZK iframe sample size (5-10)
+        required: false
+        default: '8'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RESEARCH_MODE: ${{ inputs.mode || 'all' }}
+      RESEARCH_LIMIT: ${{ inputs.limit || '120' }}
+      CHZZK_LIMIT: ${{ inputs.chzzk_limit || '8' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run bounded public research
+        run: node scripts/refine-and-chzzk.mjs
