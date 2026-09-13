@@ -10,14 +10,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function plain(value) {
   return String(value || '')
-    .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, ' ')
-    .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -51,10 +51,10 @@ async function knownIds(kind) {
     for (const item of data.items || []) {
       const u = String(item.sourceUrl || '');
       if (kind === 'inven') {
-        const m = u.match(/\\/board\\/webzine\\/2097\\/(\\d+)/);
+        const m = u.match(/\/board\/webzine\/2097\/(\d+)/);
         if (m) set.add(m[1]);
       } else if (kind === 'bobaedream') {
-        const m = u.match(/[?&]No=(\\d+)/i);
+        const m = u.match(/[?&]No=(\d+)/i);
         if (m) set.add('nsfw:' + m[1]);
       }
     }
@@ -64,9 +64,9 @@ async function knownIds(kind) {
 
 function dateNear(htmlText, index) {
   const around = String(htmlText).slice(Math.max(0, index - 500), Math.min(htmlText.length, index + 500));
-  const full = around.match(/(20\\d{2})[.\\/-](\\d{1,2})[.\\/-](\\d{1,2})/);
+  const full = around.match(/(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/);
   if (full) return new Date(Date.UTC(+full[1], +full[2] - 1, +full[3])).getTime();
-  const short = around.match(/(\\d{1,2})[.\\/-](\\d{1,2})(?!\\d)/);
+  const short = around.match(/(\d{1,2})[.\/-](\d{1,2})(?!\d)/);
   if (short) {
     const now = new Date();
     const d = new Date(Date.UTC(now.getUTCFullYear(), +short[1] - 1, +short[2]));
@@ -78,7 +78,7 @@ function dateNear(htmlText, index) {
 
 function invenListAll(text) {
   const map = new Map();
-  const re = /<a\\b[^>]*href=["']((?:https?:\\/\\/www\\.inven\\.co\\.kr)?\\/board\\/webzine\\/2097\\/(\\d+))[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/gi;
+  const re = /<a\b[^>]*href=["']((?:https?:\/\/www\.inven\.co\.kr)?\/board\/webzine\/2097\/(\d+))[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
   for (const m of text.matchAll(re)) {
     const id = m[2];
     const title = plain(m[3]).slice(0, 300);
@@ -196,7 +196,7 @@ async function probeBobaFailures(rows, ingestResult) {
     try {
       const r = await fetch(row.mediaUrls[0], { headers: { 'user-agent': agent, range: 'bytes=0-1023', referer: row.sourceUrl }, redirect: 'follow', signal: AbortSignal.timeout(10_000) });
       const ct = r.headers.get('content-type') || '';
-      const key = r.status === 404 ? 'media_404' : r.status === 403 ? 'media_403' : r.status === 429 ? 'rate_limited' : !r.ok ? 'http_' + r.status : /text\\/html/i.test(ct) ? 'invalid_media' : 'ok';
+      const key = r.status === 404 ? 'media_404' : r.status === 403 ? 'media_403' : r.status === 429 ? 'rate_limited' : !r.ok ? 'http_' + r.status : /text\/html/i.test(ct) ? 'invalid_media' : 'ok';
       counts[key] = (counts[key] || 0) + 1;
     } catch (e) { counts[e?.name === 'TimeoutError' ? 'timeout' : 'transient_fetch'] = (counts[e?.name === 'TimeoutError' ? 'timeout' : 'transient_fetch'] || 0) + 1; }
     checked++;
@@ -208,7 +208,7 @@ async function modelProbe() {
   const url = 'https://www.inven.co.kr/board/webzine/2898?category=%EA%B2%8C%EC%9E%84%EB%AA%A8%EB%8D%B8';
   try {
     const r = await html(url, 'https://www.inven.co.kr/board/webzine/2898');
-    const links = [...r.text.matchAll(/href=["']((?:https?:\\/\\/www\\.inven\\.co\\.kr)?\\/board\\/webzine\\/2898\\/(\\d+))[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/gi)]
+    const links = [...r.text.matchAll(/href=["']((?:https?:\/\/www\.inven\.co\.kr)?\/board\/webzine\/2898\/(\d+))[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)]
       .map((m) => ({ id: m[2], title: plain(m[3]).slice(0, 200), url: 'https://www.inven.co.kr/board/webzine/2898/' + m[2] }))
       .filter((x, i, a) => x.title && a.findIndex((y) => y.id === x.id) === i).slice(0, 100);
     let detailSuccess = 0, mediaSuccess = 0;
