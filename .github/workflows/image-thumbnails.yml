@@ -5,8 +5,21 @@ on:
     inputs:
       mediaId:
         description: 'GIF media id to regenerate'
-        required: true
+        required: false
         type: string
+      postId:
+        description: 'Post id whose GIF thumbnails should regenerate'
+        required: false
+        default: ''
+        type: string
+      limit:
+        description: 'New GIF thumbnails per automatic sweep (1-25)'
+        required: false
+        default: '10'
+        type: string
+  workflow_run:
+    workflows: ['Community bounded crawl']
+    types: [completed]
 
 permissions:
   contents: read
@@ -15,10 +28,13 @@ jobs:
   gif-thumbnail:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     env:
       YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
-      IMAGE_THUMBNAIL_MEDIA_ID: ${{ inputs.mediaId }}
+      IMAGE_THUMBNAIL_MEDIA_ID: ${{ inputs.mediaId || '' }}
+      IMAGE_THUMBNAIL_POST_ID: ${{ inputs.postId || '' }}
+      IMAGE_THUMBNAIL_LIMIT: ${{ inputs.limit || '10' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
