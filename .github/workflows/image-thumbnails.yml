@@ -1,0 +1,38 @@
+name: GIF thumbnail repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      mediaId:
+        description: 'GIF media id to regenerate'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gif-thumbnail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
+      IMAGE_THUMBNAIL_MEDIA_ID: ${{ inputs.mediaId }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check FFmpeg
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Generate and upload GIF thumbnail
+        run: node src/image-thumbnails.mjs
