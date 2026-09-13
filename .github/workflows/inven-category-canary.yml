@@ -1,0 +1,33 @@
+name: Inven category canary (temporary)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      categories:
+        description: Categories to ingest (cheer_gif, game_model, or both)
+        required: false
+        default: both
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
+      INVEN_CATEGORY_CANARY: ${{ inputs.categories || 'both' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run bounded Inven category canary
+        run: node scripts/inven-category-canary.mjs
