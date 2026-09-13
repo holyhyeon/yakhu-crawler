@@ -150,6 +150,7 @@ if (!process.env.YAKHU_SITE_URL || !process.env.YAKHU_INGEST_SECRET) {
         submitted: crawl.candidates.length,
         ...Object.fromEntries(Object.entries(ingest).filter(([key]) => key !== 'transportErrors')),
         errors: ingest.failed + ingest.transportErrors.length,
+        transportErrors: ingest.transportErrors,
         list: crawl.listStatuses,
         runtimeMs: Date.now() - started,
       }));
