@@ -47,7 +47,7 @@ function countRows(rows, candidates, crawlMetrics) {
   return { accepted, review, rejected, duplicate, unsupported: Math.max(unsupported, expectedUnsupportedRows, 0), errors, breakdown, ingestAttempted: scoped.length };
 }
 
-export async function reportFunnel({ source, candidates, crawlMetrics, ingest, siteUrl, secret, startedAt, finishedAt, sourceError }) {
+export async function reportFunnel({ runId, source, candidates, crawlMetrics, ingest, siteUrl, secret, startedAt, finishedAt, sourceError }) {
   if (!siteUrl || !secret) return { reported: false, error: 'missing_ingest_configuration' };
   const endpoint = new URL('/api/ingest/metrics', siteUrl).href;
   const reports = [];
@@ -57,7 +57,7 @@ export async function reportFunnel({ source, candidates, crawlMetrics, ingest, s
       ? Number(crawlMetrics?.discovered ?? group.length)
       : group.length;
     const payload = {
-      runId: crypto.randomUUID(), source, category, startedAt, finishedAt,
+      runId: runId || crypto.randomUUID(), source, category, startedAt, finishedAt,
       discovered, detailFetched: group.length, mediaExtracted: group.filter((candidate) => Array.isArray(candidate.mediaUrls) && candidate.mediaUrls.length > 0).length,
       ingestAttempted: result.ingestAttempted, accepted: result.accepted, review: result.review, rejected: result.rejected,
       published: result.accepted, duplicate: result.duplicate, unsupported: result.unsupported,

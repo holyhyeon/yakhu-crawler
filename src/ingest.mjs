@@ -1,6 +1,8 @@
+import { selectShadowAudits } from './shadow-audit.mjs';
+
 const BATCH_SIZE = 2;
 
-export async function sendToSite(candidates, { siteUrl, secret }) {
+export async function sendToSite(candidates, { siteUrl, secret, runId }) {
   if (!siteUrl || !secret) throw new Error('missing_ingest_configuration');
   const endpoint = new URL('/api/ingest', siteUrl).href;
   const totals = { processed: 0, accepted: 0, review: 0, rejected: 0, duplicate: 0, failed: 0 };
@@ -31,5 +33,34 @@ export async function sendToSite(candidates, { siteUrl, secret }) {
       for (const candidate of batch) resultRows.push({ sourcePostId: candidate.sourcePostId, status: 'failed', reason: 'site_request_failed' });
     }
   }
-  return { ...totals, transportErrors, resultRows };
+  const shadow = selectShadowAudits(candidates, resultRows, runId);
+  const shadowTotals = {
+    shadowEligible: shadow.eligibleCount,
+    shadowSampled: shadow.sampledCount,
+    shadowStored: 0,
+    shadowErrors: 0,
+    shadowMediaExtracted: shadow.audits.reduce((sum, audit) => sum + Number(audit.mediaCount || 0), 0),
+  };
+  if (shadow.audits.length) {
+    try {
+      const shadowResponse = await fetch(new URL('/api/ingest/shadow-audit', siteUrl).href, {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json' },
+        body: JSON.stringify({ audits: shadow.audits }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!shadowResponse.ok) {
+        shadowTotals.shadowErrors += shadow.audits.length;
+        console.error(JSON.stringify({ type: 'shadow_audit_failed', status: shadowResponse.status, sampled: shadow.audits.length }));
+      } else {
+        const shadowResult = await shadowResponse.json();
+        shadowTotals.shadowStored = Number(shadowResult.stored ?? 0);
+        shadowTotals.shadowErrors += Number(shadowResult.invalid ?? 0) + Number(shadowResult.errors ?? 0);
+      }
+    } catch (error) {
+      shadowTotals.shadowErrors += shadow.audits.length;
+      console.error(JSON.stringify({ type: 'shadow_audit_failed', error: error instanceof Error ? error.message : 'request_failed', sampled: shadow.audits.length }));
+    }
+  }
+  return { ...totals, ...shadowTotals, transportErrors, resultRows };
 }

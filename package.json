@@ -8,7 +8,7 @@
   },
   "scripts": {
     "crawl": "node src/index.mjs",
-    "check": "node --check src/index.mjs && node --check src/sources/inven.mjs && node --check src/sources/bobaedream.mjs && node --check src/ingest.mjs && node --check src/maintenance.mjs && node --check src/image-thumbnails.mjs && node --check src/video-thumbnails.mjs",
-    "test:fixture": "node src/sources/inven.test.mjs && node src/sources/bobaedream.test.mjs"
+    "check": "node --check src/index.mjs && node --check src/sources/inven.mjs && node --check src/sources/bobaedream.mjs && node --check src/ingest.mjs && node --check src/shadow-audit.mjs && node --check src/maintenance.mjs && node --check src/image-thumbnails.mjs && node --check src/video-thumbnails.mjs",
+    "test:fixture": "node src/sources/inven.test.mjs && node src/sources/bobaedream.test.mjs && node src/shadow-audit.test.mjs"
   }
 }
