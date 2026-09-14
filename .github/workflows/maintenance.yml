@@ -1,0 +1,51 @@
+name: Maintenance audit and repair
+
+on:
+  schedule:
+    - cron: '3 1,7,13,19 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maintenance records to scan (1-50)'
+        required: false
+        default: '25'
+        type: string
+
+concurrency:
+  group: maintenance-repair
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
+      MAINTENANCE_LIMIT: ${{ inputs.limit || '25' }}
+      IMAGE_THUMBNAIL_LIMIT: '10'
+      VIDEO_THUMBNAIL_LIMIT: '10'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check FFmpeg
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Audit and repair derived data
+        run: node src/maintenance.mjs
+      - name: Repair GIF thumbnails
+        run: node src/image-thumbnails.mjs
+      - name: Repair video posters
+        run: node src/video-thumbnails.mjs

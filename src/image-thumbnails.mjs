@@ -26,6 +26,16 @@ async function requestJson(url, init = {}) {
   return body;
 }
 
+async function reportRepair(mediaId, status, reason) {
+  try {
+    await requestJson(new URL('/api/admin/maintenance/repair', siteUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entityId: mediaId, repairType: 'gif_thumbnail', status, reason }),
+    });
+  } catch { /* reporting must not hide processing results */ }
+}
+
 async function run(program, args) {
   return execFileAsync(program, args, { maxBuffer: 2_000_000 });
 }
@@ -114,7 +124,10 @@ async function processOne(item, directory) {
     if (mediaResponse.status !== 404 || attempt === 1) break;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (!mediaResponse.ok) throw new Error(`media_${mediaResponse.status}`);
+  if (!mediaResponse.ok) {
+    if (mediaResponse.status === 404) return { status: 'skipped', reason: 'original_unavailable' };
+    throw new Error(`media_${mediaResponse.status}`);
+  }
   const originalBytes = Buffer.from(await mediaResponse.arrayBuffer());
   await writeFile(inputPath, originalBytes);
   const thumbnail = await extractThumbnail(inputPath, outputPath);
@@ -140,10 +153,18 @@ const results = [];
 try {
   for (const item of items) {
     try {
-      results.push({ mediaId: item.id, postId: item.postId ?? null, status: 'generated', ...(await processOne(item, directory)) });
+      const result = await processOne(item, directory);
+      if (result.status === 'skipped') {
+        results.push({ mediaId: item.id, postId: item.postId ?? null, ...result });
+        await reportRepair(item.id, 'expected_skip', result.reason);
+      } else {
+        results.push({ mediaId: item.id, postId: item.postId ?? null, status: 'generated', ...result });
+        await reportRepair(item.id, 'repaired');
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       results.push({ mediaId: item.id, postId: item.postId ?? null, status: 'error', reason });
+      await reportRepair(item.id, 'error', reason);
     }
   }
 } finally {

@@ -27,6 +27,16 @@ async function requestJson(url, init = {}) {
   return body;
 }
 
+async function reportRepair(mediaId, status, reason) {
+  try {
+    await requestJson(new URL('/api/admin/maintenance/repair', siteUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entityId: mediaId, repairType: 'video_poster', status, reason }),
+    });
+  } catch { /* reporting must not hide processing results */ }
+}
+
 async function run(program, args) {
   return execFileAsync(program, args, { maxBuffer: 2_000_000 });
 }
@@ -88,7 +98,10 @@ async function processOne(item, directory) {
     if (mediaResponse.status !== 404 || attempt === 1) break;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (!mediaResponse.ok) throw new Error(`media_${mediaResponse.status}`);
+  if (!mediaResponse.ok) {
+    if (mediaResponse.status === 404) return { status: 'skipped', reason: 'original_unavailable' };
+    throw new Error(`media_${mediaResponse.status}`);
+  }
   await writeFile(inputPath, Buffer.from(await mediaResponse.arrayBuffer()));
   const poster = await extractPoster(inputPath, outputPath);
   const form = new FormData();
@@ -118,22 +131,18 @@ try {
       continue;
     }
     try {
-      results.push({ mediaId: item.id, status: 'generated', ...(await processOne(item, directory)) });
+      const result = await processOne(item, directory);
+      if (result.status === 'skipped') {
+        results.push({ mediaId: item.id, ...result });
+        await reportRepair(item.id, 'expected_skip', result.reason);
+      } else {
+        results.push({ mediaId: item.id, status: 'generated', ...result });
+        await reportRepair(item.id, 'repaired');
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (reason === 'media_404') {
-        results.push({
-          mediaId: item.id,
-          postId: item.postId ?? null,
-          source: item.source ?? null,
-          status: 'skipped',
-          reason: 'original_unavailable',
-          objectKey: item.objectKey ?? null,
-          mediaUrl: item.mediaUrl,
-        });
-      } else {
-        results.push({ mediaId: item.id, status: 'error', reason });
-      }
+      results.push({ mediaId: item.id, status: 'error', reason });
+      await reportRepair(item.id, 'error', reason);
     }
   }
 } finally {
