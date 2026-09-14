@@ -15,6 +15,7 @@ on:
           - 'inven_categories'
           - 'inven_cheer_gif'
           - 'bobaedream'
+          - 'boba_girl'
           - 'all'
       pages:
         description: 'Number of recent pages (1-4)'

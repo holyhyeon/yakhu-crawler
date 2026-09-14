@@ -1,5 +1,6 @@
-const LIST_URL = 'https://www.bobaedream.co.kr/list?code=nsfw';
+const LIST_ORIGIN = 'https://www.bobaedream.co.kr/list';
 const BOARD_CODE = 'nsfw';
+const BOARD_CATEGORY = '보배드림 후방주의방';
 const SOURCE_AGENT = 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)';
 const PAGE_CAP = 4;
 const CANDIDATES_PER_PAGE = 15;
@@ -93,7 +94,7 @@ function boardListRoot(html) {
     || source;
 }
 
-function parseBoardUrl(raw, base = LIST_URL) {
+function parseBoardUrl(raw, base = `${LIST_ORIGIN}?code=${BOARD_CODE}`, boardCode = BOARD_CODE) {
   const href = absoluteUrl(raw, base);
   if (!href) return null;
   try {
@@ -102,10 +103,10 @@ function parseBoardUrl(raw, base = LIST_URL) {
     if (!/^\/view(?:\.php)?\/?$/i.test(url.pathname)) return null;
     const code = url.searchParams.get('code');
     const no = url.searchParams.get('No') || url.searchParams.get('no');
-    if (code !== BOARD_CODE || !no || !/^\d+$/.test(no)) return null;
+    if (code !== boardCode || !no || !/^\d+$/.test(no)) return null;
     return {
-      sourcePostId: `${BOARD_CODE}:${no}`,
-      sourceUrl: `https://www.bobaedream.co.kr/view?code=${BOARD_CODE}&No=${no}`,
+      sourcePostId: `${boardCode}:${no}`,
+      sourceUrl: `https://www.bobaedream.co.kr/view?code=${boardCode}&No=${no}`,
       no,
     };
   } catch {
@@ -148,11 +149,18 @@ function isNoiseTitle(title) {
   return /(?:^|[\s\[【])(공지|운영\s*규정|이벤트|게시판\s*안내|광고|협찬|프로모션)(?:$|[\s\]】])/i.test(title);
 }
 
-export function extractListing(html, { pageUrl = LIST_URL } = {}) {
+export function extractListing(
+  html,
+  {
+    pageUrl = `${LIST_ORIGIN}?code=${BOARD_CODE}`,
+    boardCode = BOARD_CODE,
+    categoryLabel = BOARD_CATEGORY,
+  } = {},
+) {
   const scope = boardListRoot(html);
   const items = new Map();
   for (const match of scope.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
-    const parsed = parseBoardUrl(attribute(match[1], 'href'), pageUrl);
+    const parsed = parseBoardUrl(attribute(match[1], 'href'), pageUrl, boardCode);
     if (!parsed) continue;
     const title = normalizeTitle(match[2]);
     if (!title) continue;
@@ -167,7 +175,7 @@ export function extractListing(html, { pageUrl = LIST_URL } = {}) {
       bodyText: '',
       publishedAt: parseDateText(row),
       mediaUrls: [],
-      category: '보배드림 후방주의방',
+      category: categoryLabel,
       noise: isNoiseTitle(title),
     };
     const old = items.get(parsed.sourcePostId);
@@ -281,17 +289,20 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
-function pageUrl(page) {
-  const url = new URL(LIST_URL);
+function pageUrl(page, boardCode = BOARD_CODE) {
+  const url = new URL(LIST_ORIGIN);
+  url.searchParams.set('code', boardCode);
   if (page > 1) url.searchParams.set('page', String(page));
   return url.href;
 }
 
 /**
- * Collects only the public, exact code=nsfw board. The Site remains the
- * single moderation, dedupe, fingerprint, and storage authority.
+ * Collects one of the explicitly approved public Bobaedream boards. The Site
+ * remains the single moderation, dedupe, fingerprint, and storage authority.
  */
-export async function collectBobaedream({ pages = 1 } = {}) {
+export async function collectBobaedream({ pages = 1, boardCode = BOARD_CODE, categoryLabel = BOARD_CATEGORY } = {}) {
+  if (!['nsfw', 'girl'].includes(boardCode)) throw new BobaedreamSourceError('unsupported_board', boardCode);
+  const listUrl = `${LIST_ORIGIN}?code=${boardCode}`;
   const pageCount = Math.min(PAGE_CAP, Math.max(1, Number.isFinite(Number(pages)) ? Math.floor(Number(pages)) : 1));
   const discovered = new Map();
   let pageFailures = 0;
@@ -299,8 +310,8 @@ export async function collectBobaedream({ pages = 1 } = {}) {
   let failureReason = null;
   for (let page = 1; page <= pageCount; page++) {
     try {
-      const result = await fetchText(pageUrl(page), LIST_URL);
-      const pageCandidates = extractListing(result.html, { pageUrl: result.url });
+      const result = await fetchText(pageUrl(page, boardCode), listUrl);
+      const pageCandidates = extractListing(result.html, { pageUrl: result.url, boardCode, categoryLabel });
       if (!pageCandidates.length) {
         pageFailures++;
         failureReason = failureReason || 'no_board_posts';
@@ -368,4 +379,8 @@ export async function collectBobaedream({ pages = 1 } = {}) {
       failureReason,
     },
   };
+}
+
+export async function collectBobaedreamGirl({ pages = 1 } = {}) {
+  return collectBobaedream({ pages, boardCode: 'girl', categoryLabel: '보배드림 레이싱모델' });
 }

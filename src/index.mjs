@@ -1,4 +1,4 @@
-import { collectBobaedream } from './sources/bobaedream.mjs';
+import { collectBobaedream, collectBobaedreamGirl } from './sources/bobaedream.mjs';
 import { collectInven, collectInvenCategory } from './sources/inven.mjs';
 import { checkExistingCandidates, sendToSite } from './ingest.mjs';
 import { reportFunnel } from './funnel.mjs';
@@ -23,6 +23,8 @@ const sourceIds = disabledCategorySourceIds.has(requestedSource)
     ? categorySourceIds
   : requestedSource === 'bobaedream'
     ? ['bobaedream']
+    : requestedSource === 'boba_girl'
+      ? ['boba_girl']
     : categorySources[requestedSource]
       ? [requestedSource]
     : ['inven'];
@@ -45,6 +47,8 @@ if (!process.env.YAKHU_SITE_URL && !dryRun) {
         : undefined;
       crawl = source === 'bobaedream'
         ? await collectBobaedream({ pages })
+        : source === 'boba_girl'
+          ? await collectBobaedreamGirl({ pages })
         : categorySources[source]
           ? await collectInvenCategory({ ...categorySources[source], pages, existingChecker })
         : await collectInven({ pages, postId });

@@ -19,6 +19,17 @@ assert.equal(listing[0].sourcePostId, 'nsfw:8014');
 assert.equal(listing[0].sourceUrl, 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014');
 assert.equal(listing[1].title, '올려주는 흰셔츠 가슴골');
 
+const girlListing = extractListing(`
+  <table id="boardlist"><tbody>
+    <tr><td><a href="/view?code=girl&No=8014">레이싱모델 화보</a></td><td>09/14</td></tr>
+    <tr><td><a href="/view?code=nsfw&No=8013">다른 게시판</a></td><td>09/14</td></tr>
+  </tbody></table>
+`, { pageUrl: 'https://www.bobaedream.co.kr/list?code=girl', boardCode: 'girl', categoryLabel: '보배드림 레이싱모델' });
+assert.equal(girlListing.length, 1);
+assert.equal(girlListing[0].sourcePostId, 'girl:8014');
+assert.equal(girlListing[0].sourceUrl, 'https://www.bobaedream.co.kr/view?code=girl&No=8014');
+assert.equal(girlListing[0].category, '보배드림 레이싱모델');
+
 const detail = `
   <header>사이트 navigation 후방주의방</header>
   <div class="conView">
