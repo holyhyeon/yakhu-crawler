@@ -88,8 +88,27 @@ export function extractMediaUrls(html) {
 }
 
 export function extractDetailTitle(html) {
+  const articleHeading = html.match(/<[^>]+class=["'][^"']*\barticleTitle\b[^"']*["'][^>]*>[\s\S]*?<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '';
+  const articleTitle = plainText(articleHeading).slice(0, 300);
+  if (articleTitle && articleTitle !== '인벤') return articleTitle;
+
+  const metaTitle = html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["'][^>]*>/i)?.[1]
+    ?? html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*property=["']og:title["'][^>]*>/i)?.[1]
+    ?? '';
+  const openGraphTitle = plainText(metaTitle).slice(0, 300);
+  if (openGraphTitle && openGraphTitle !== '인벤') return openGraphTitle;
+
+  const documentTitle = plainText(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '');
+  const cleanedDocumentTitle = documentTitle
+    .replace(/^웹진\s*인벤\s*:\s*/i, '')
+    .replace(/\s+-\s+[^-]*(?:인벤|갤러리|게시판)[^-]*$/i, '')
+    .trim()
+    .slice(0, 300);
+  if (cleanedDocumentTitle && cleanedDocumentTitle !== '인벤') return cleanedDocumentTitle;
+
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '';
-  return plainText(heading).slice(0, 300);
+  const fallbackHeading = plainText(heading).slice(0, 300);
+  return fallbackHeading === '인벤' ? '' : fallbackHeading;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

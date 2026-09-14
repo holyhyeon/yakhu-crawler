@@ -33,4 +33,20 @@ assert.deepEqual(extractMediaUrls(detail), [
 ]);
 assert.equal(extractDetailTitle(detail), 'ㅇㅎ) 저 자연산 E컵이에요.');
 
+const actualTitle = '<h1 class="logo"><span class="is-blind">인벤</span></h1>' +
+  '<meta property="og:title" content="(ㅎㅂ) 서안 발리여행 비키니">' +
+  '<title>웹진 인벤 : (ㅎㅂ) 서안 발리여행 비키니 - 오픈이슈갤러리</title>' +
+  '<div class="articleSubject"><div class="articleTitle"><h1>(ㅎㅂ) 서안 발리여행 비키니</h1></div></div>';
+assert.equal(extractDetailTitle(actualTitle), '(ㅎㅂ) 서안 발리여행 비키니');
+
+const openGraphFallback = '<h1 class="logo"><span class="is-blind">인벤</span></h1>' +
+  '<meta property="og:title" content="발차기 시범을 보여주는 누나">';
+assert.equal(extractDetailTitle(openGraphFallback), '발차기 시범을 보여주는 누나');
+
+const documentFallback = '<h1 class="logo"><span class="is-blind">인벤</span></h1>' +
+  '<title>웹진 인벤 : 실제 게시물 제목 - 오픈이슈갤러리</title>';
+assert.equal(extractDetailTitle(documentFallback), '실제 게시물 제목');
+
+assert.equal(extractDetailTitle('<h1 class="logo"><span class="is-blind">인벤</span></h1>'), '');
+
 console.log('inven fixture ok');
