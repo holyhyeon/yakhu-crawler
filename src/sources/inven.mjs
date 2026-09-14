@@ -268,7 +268,11 @@ export async function collectInvenCategory({
         precheckSucceeded: true,
       });
       selected = selectionMetrics.selected;
-    } catch {
+    } catch (error) {
+      console.error(JSON.stringify({
+        type: 'seen_precheck_failed',
+        error: error instanceof Error ? error.message : 'request_failed',
+      }));
       seenPrecheckErrors = 1;
     }
   }
