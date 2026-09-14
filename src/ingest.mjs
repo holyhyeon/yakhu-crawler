@@ -5,6 +5,7 @@ export async function sendToSite(candidates, { siteUrl, secret }) {
   const endpoint = new URL('/api/ingest', siteUrl).href;
   const totals = { processed: 0, accepted: 0, review: 0, rejected: 0, duplicate: 0, failed: 0 };
   const transportErrors = [];
+  const resultRows = [];
   for (let index = 0; index < candidates.length; index += BATCH_SIZE) {
     const batch = candidates.slice(index, index + BATCH_SIZE);
     try {
@@ -17,15 +18,18 @@ export async function sendToSite(candidates, { siteUrl, secret }) {
       if (!response.ok) {
         totals.failed += batch.length;
         transportErrors.push('site_' + response.status);
+        for (const candidate of batch) resultRows.push({ sourcePostId: candidate.sourcePostId, status: 'failed', reason: 'site_' + response.status });
         continue;
       }
       const result = await response.json();
       totals.processed += Number(result.processed ?? 0);
       for (const key of ['accepted', 'review', 'rejected', 'duplicate', 'failed']) totals[key] += Number(result[key] ?? 0);
+      if (Array.isArray(result.results)) resultRows.push(...result.results);
     } catch {
       totals.failed += batch.length;
       transportErrors.push('site_request_failed');
+      for (const candidate of batch) resultRows.push({ sourcePostId: candidate.sourcePostId, status: 'failed', reason: 'site_request_failed' });
     }
   }
-  return { ...totals, transportErrors };
+  return { ...totals, transportErrors, resultRows };
 }
