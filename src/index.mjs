@@ -18,7 +18,7 @@ const categorySourceIds = Object.keys(categorySources).filter((source) => !disab
 const sourceIds = disabledCategorySourceIds.has(requestedSource)
   ? []
   : requestedSource === 'all'
-  ? ['inven', 'bobaedream', ...categorySourceIds]
+  ? ['inven', 'bobaedream', 'boba_girl', ...categorySourceIds]
   : requestedSource === 'inven_categories'
     ? categorySourceIds
   : requestedSource === 'bobaedream'
