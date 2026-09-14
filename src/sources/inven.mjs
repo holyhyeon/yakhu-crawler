@@ -5,6 +5,9 @@ const CANDIDATE_CAP = 15;
 const MEDIA_CAP = 20;
 const CATEGORY_PAGE_CAP = 2;
 const CATEGORY_CANDIDATE_CAP = 15;
+// Category refill may inspect both already-allowed pages, but the selected
+// candidate cap remains 15. This bound only keeps the pre-check payload small.
+const CATEGORY_SCAN_CANDIDATE_CAP = CATEGORY_CANDIDATE_CAP * CATEGORY_PAGE_CAP;
 const DETAIL_CONCURRENCY = 2;
 const DETAIL_DELAY_MS = 250;
 
@@ -185,19 +188,58 @@ function categoryListUrl(board, category, page) {
   return url.href;
 }
 
+export function selectCategoryCandidates(rawCandidates, {
+  candidateCap = CATEGORY_CANDIDATE_CAP,
+  existingIds = [],
+  precheckSucceeded = false,
+} = {}) {
+  const deduped = [];
+  const seenIds = new Set();
+  for (const candidate of rawCandidates || []) {
+    if (!candidate?.sourcePostId || seenIds.has(candidate.sourcePostId)) continue;
+    seenIds.add(candidate.sourcePostId);
+    deduped.push(candidate);
+  }
+
+  if (!precheckSucceeded) {
+    return {
+      selected: deduped.slice(0, candidateCap),
+      seenPrechecked: 0,
+      seenSkipped: 0,
+      refilled: 0,
+      selectedUnseen: Math.min(candidateCap, deduped.length),
+    };
+  }
+
+  const existing = new Set(existingIds);
+  const unseen = deduped.filter((candidate) => !existing.has(candidate.sourcePostId));
+  const selected = unseen.slice(0, candidateCap);
+  const frontWindow = new Set(deduped.slice(0, candidateCap).map((candidate) => candidate.sourcePostId));
+  return {
+    selected,
+    seenPrechecked: deduped.length,
+    seenSkipped: deduped.length - unseen.length,
+    refilled: selected.filter((candidate) => !frontWindow.has(candidate.sourcePostId)).length,
+    selectedUnseen: selected.length,
+  };
+}
+
 export async function collectInvenCategory({
   board,
   category,
   categoryLabel,
   pages = CATEGORY_PAGE_CAP,
   candidateCap = CATEGORY_CANDIDATE_CAP,
+  existingChecker,
 } = {}) {
   if (!board || !category || !categoryLabel) throw new Error('missing_inven_category_config');
   const pageCount = Math.min(CATEGORY_PAGE_CAP, Math.max(1, Number.isFinite(Number(pages)) ? Math.floor(Number(pages)) : CATEGORY_PAGE_CAP));
-  const discovered = new Map();
+  const rawDiscovered = new Map();
+  const legacyDiscovered = new Map();
   let pageFailures = 0;
   const listUrl = categoryListUrl(board, category, 1);
-  for (let page = 1; page <= pageCount && discovered.size < candidateCap; page++) {
+  const refillEnabled = typeof existingChecker === 'function';
+  for (let page = 1; page <= pageCount && (refillEnabled || legacyDiscovered.size < candidateCap); page++) {
     try {
       const url = categoryListUrl(board, category, page);
       const html = await fetchText(url, listUrl);
@@ -205,14 +247,35 @@ export async function collectInvenCategory({
         board,
         categoryLabel,
         sourcePostIdPrefix: true,
-        candidateCap,
-      })) discovered.set(candidate.sourcePostId, candidate);
+        candidateCap: refillEnabled ? CATEGORY_SCAN_CANDIDATE_CAP : candidateCap,
+      })) {
+        rawDiscovered.set(candidate.sourcePostId, candidate);
+        if (legacyDiscovered.size < candidateCap) legacyDiscovered.set(candidate.sourcePostId, candidate);
+      }
     } catch { pageFailures++; }
     if (page < pageCount) await sleep(DETAIL_DELAY_MS);
   }
+
+  let selected = [...legacyDiscovered.values()].slice(0, candidateCap);
+  let selectionMetrics = selectCategoryCandidates(selected, { candidateCap });
+  let seenPrecheckErrors = 0;
+  if (refillEnabled) {
+    try {
+      const checked = await existingChecker([...rawDiscovered.values()]);
+      selectionMetrics = selectCategoryCandidates([...rawDiscovered.values()], {
+        candidateCap,
+        existingIds: checked,
+        precheckSucceeded: true,
+      });
+      selected = selectionMetrics.selected;
+    } catch {
+      seenPrecheckErrors = 1;
+    }
+  }
+
   let detailSuccess = 0;
   let detailFailure = 0;
-  const candidates = (await mapLimit([...discovered.values()], DETAIL_CONCURRENCY, async (candidate) => {
+  const candidates = (await mapLimit(selected, DETAIL_CONCURRENCY, async (candidate) => {
     await sleep(DETAIL_DELAY_MS);
     try {
       const html = await fetchText(candidate.sourceUrl, listUrl);
@@ -224,11 +287,17 @@ export async function collectInvenCategory({
   return {
     candidates: withMedia,
     metrics: {
-      discovered: discovered.size,
+      discovered: selected.length,
       detailSuccess,
       detailFailure,
       pageFailures,
       candidates: withMedia.length,
+      candidateRaw: refillEnabled ? rawDiscovered.size : selected.length,
+      seenPrechecked: selectionMetrics.seenPrechecked,
+      seenSkipped: selectionMetrics.seenSkipped,
+      refilled: selectionMetrics.refilled,
+      selectedUnseen: selectionMetrics.selectedUnseen,
+      seenPrecheckErrors,
     },
   };
 }

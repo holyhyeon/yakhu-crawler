@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { extractBodyText, extractDetailTitle, extractListing, extractMediaUrls } from './inven.mjs';
+import { extractBodyText, extractDetailTitle, extractListing, extractMediaUrls, selectCategoryCandidates } from './inven.mjs';
 
 const listing = extractListing(
   '<a href="/board/webzine/2097/2725741"> 비키니 모델 화보 </a>' +
@@ -48,5 +48,45 @@ const documentFallback = '<h1 class="logo"><span class="is-blind">인벤</span><
 assert.equal(extractDetailTitle(documentFallback), '실제 게시물 제목');
 
 assert.equal(extractDetailTitle('<h1 class="logo"><span class="is-blind">인벤</span></h1>'), '');
+
+const candidates = Array.from({ length: 30 }, (_, index) => ({ sourcePostId: `party/6296:${index + 1}` }));
+const allUnseen = selectCategoryCandidates(candidates, { candidateCap: 15, precheckSucceeded: true });
+assert.deepEqual(allUnseen.selected.map((candidate) => candidate.sourcePostId), candidates.slice(0, 15).map((candidate) => candidate.sourcePostId));
+assert.equal(allUnseen.seenSkipped, 0);
+assert.equal(allUnseen.refilled, 0);
+
+const partialSeen = selectCategoryCandidates(candidates, {
+  candidateCap: 15,
+  existingIds: candidates.slice(0, 5).map((candidate) => candidate.sourcePostId),
+  precheckSucceeded: true,
+});
+assert.deepEqual(partialSeen.selected.map((candidate) => candidate.sourcePostId), candidates.slice(5, 20).map((candidate) => candidate.sourcePostId));
+assert.equal(partialSeen.seenSkipped, 5);
+assert.equal(partialSeen.refilled, 5);
+
+const frontSaturated = selectCategoryCandidates(candidates, {
+  candidateCap: 15,
+  existingIds: candidates.slice(0, 15).map((candidate) => candidate.sourcePostId),
+  precheckSucceeded: true,
+});
+assert.deepEqual(frontSaturated.selected.map((candidate) => candidate.sourcePostId), candidates.slice(15, 30).map((candidate) => candidate.sourcePostId));
+assert.equal(frontSaturated.refilled, 15);
+
+const fullSaturated = selectCategoryCandidates(candidates, {
+  candidateCap: 15,
+  existingIds: candidates.map((candidate) => candidate.sourcePostId),
+  precheckSucceeded: true,
+});
+assert.equal(fullSaturated.selected.length, 0);
+
+const precheckFallback = selectCategoryCandidates(candidates, { candidateCap: 15, precheckSucceeded: false });
+assert.deepEqual(precheckFallback.selected.map((candidate) => candidate.sourcePostId), candidates.slice(0, 15).map((candidate) => candidate.sourcePostId));
+
+const priorRejectIsUnseen = selectCategoryCandidates(candidates, {
+  candidateCap: 15,
+  existingIds: ['party/6296:9999'],
+  precheckSucceeded: true,
+});
+assert.equal(priorRejectIsUnseen.selected.length, 15);
 
 console.log('inven fixture ok');

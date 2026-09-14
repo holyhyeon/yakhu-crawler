@@ -1,6 +1,6 @@
 import { collectBobaedream } from './sources/bobaedream.mjs';
 import { collectInven, collectInvenCategory } from './sources/inven.mjs';
-import { sendToSite } from './ingest.mjs';
+import { checkExistingCandidates, sendToSite } from './ingest.mjs';
 import { reportFunnel } from './funnel.mjs';
 
 const pages = process.env.CRAWL_PAGES || '3';
@@ -32,10 +32,16 @@ if (!process.env.YAKHU_SITE_URL && !dryRun) {
     const runId = crypto.randomUUID();
     let crawl;
     try {
+      const existingChecker = categorySources[source] && !dryRun
+        ? (candidates) => checkExistingCandidates(candidates, {
+            siteUrl: process.env.YAKHU_SITE_URL,
+            secret: process.env.YAKHU_INGEST_SECRET,
+          })
+        : undefined;
       crawl = source === 'bobaedream'
         ? await collectBobaedream({ pages })
         : categorySources[source]
-          ? await collectInvenCategory({ ...categorySources[source], pages })
+          ? await collectInvenCategory({ ...categorySources[source], pages, existingChecker })
         : await collectInven({ pages, postId });
     } catch (error) {
       let funnelReported = false;

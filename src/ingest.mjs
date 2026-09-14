@@ -2,6 +2,20 @@ import { selectShadowAudits } from './shadow-audit.mjs';
 
 const BATCH_SIZE = 2;
 
+export async function checkExistingCandidates(candidates, { siteUrl, secret }) {
+  if (!siteUrl || !secret) throw new Error('missing_ingest_configuration');
+  const response = await fetch(new URL('/api/ingest/existing', siteUrl).href, {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'inven', candidates: candidates.map(({ sourcePostId, sourceUrl }) => ({ sourcePostId, sourceUrl })) }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error('site_existing_' + response.status);
+  const result = await response.json();
+  if (!Array.isArray(result.existing)) throw new Error('invalid_existing_response');
+  return result.existing.filter((value) => typeof value === 'string');
+}
+
 export async function sendToSite(candidates, { siteUrl, secret, runId }) {
   if (!siteUrl || !secret) throw new Error('missing_ingest_configuration');
   const endpoint = new URL('/api/ingest', siteUrl).href;
