@@ -64,6 +64,16 @@ assert.deepEqual(extractMediaUrls(markerScopedAttachment, { pageUrl: 'https://ww
   'https://file1.bobaedream.co.kr/nsfw/fallback-attachment.webp',
 ]);
 
+const dynamicImageProxy = `
+  <div class="print_area">
+    <img src="https://file5.bobaedream.co.kr/image_load.php?xxx=encoded-placeholder">
+    <img src="https://file1.bobaedream.co.kr/nsfw/real-small.jpg">
+  </div>
+`;
+assert.deepEqual(extractMediaUrls(dynamicImageProxy, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8017' }), [
+  'https://file1.bobaedream.co.kr/nsfw/real-small.jpg',
+]);
+
 assert.doesNotMatch(extractBodyText(detail), /navigation|관련글|댓글|footer|광고/);
 assert.deepEqual(extractMediaUrls(detail, { pageUrl: 'https://www.bobaedream.co.kr/view?code=nsfw&No=8014' }), [
   'https://file1.bobaedream.co.kr/nsfw/example-1.gif',

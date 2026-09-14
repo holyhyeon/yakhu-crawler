@@ -183,6 +183,7 @@ function mediaUrlAllowed(url) {
   try {
     const parsed = new URL(url);
     if (!/^file\d*\.bobaedream\.co\.kr$/i.test(parsed.hostname)) return false;
+    if (/\/image_load\.php$/i.test(parsed.pathname)) return false;
     if (/logo|icon|avatar|emoji|favicon|banner|advert|sponsor|btn_|button|level\//i.test(parsed.href)) return false;
     return /\.(?:jpe?g|png|gif|webp|avif|mp4|webm)(?:[?#]|$)/i.test(parsed.pathname + parsed.search)
       || /(?:upload|attach|image|img|media|files|photo|thumbnail)/i.test(parsed.pathname);
