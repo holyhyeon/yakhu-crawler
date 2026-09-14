@@ -11,8 +11,13 @@ const categorySources = {
   inven_cheer_gif: { board: 'party/6296', category: '움짤', categoryLabel: '인벤 치어리더 움짤' },
   inven_game_model: { board: 'webzine/2898', category: '게임모델', categoryLabel: '인벤 게임모델' },
 };
-const categorySourceIds = Object.keys(categorySources);
-const sourceIds = requestedSource === 'all'
+// The Inven game-model lane is intentionally paused after its recent quality audit.
+// Keep its metadata for historical identity/reporting, but do not schedule or run it.
+const disabledCategorySourceIds = new Set(['inven_game_model']);
+const categorySourceIds = Object.keys(categorySources).filter((source) => !disabledCategorySourceIds.has(source));
+const sourceIds = disabledCategorySourceIds.has(requestedSource)
+  ? []
+  : requestedSource === 'all'
   ? ['inven', 'bobaedream', ...categorySourceIds]
   : requestedSource === 'inven_categories'
     ? categorySourceIds
