@@ -1,0 +1,48 @@
+name: Commons Kindai bounded canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      files_per_category:
+        description: 'Recent Commons files to inspect per category (max 25)'
+        required: true
+        default: '25'
+        type: string
+      max_posts:
+        description: 'Maximum grouped canary posts (max 20)'
+        required: true
+        default: '20'
+        type: string
+      max_media:
+        description: 'Maximum media per grouped post (max 10)'
+        required: true
+        default: '10'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run read-only Commons dry-run
+        env:
+          COMMONS_FILES_PER_CATEGORY: ${{ inputs.files_per_category }}
+          COMMONS_MAX_POSTS: ${{ inputs.max_posts }}
+          COMMONS_MAX_MEDIA: ${{ inputs.max_media }}
+          COMMONS_MAX_FILES: '50'
+        run: node src/commons-kindai-canary.mjs
+      - name: Upload Commons canary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: commons-kindai-canary
+          path: diagnostic-output/commons-kindai-canary.json
+          if-no-files-found: error
