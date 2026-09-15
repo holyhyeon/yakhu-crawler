@@ -18,6 +18,11 @@ on:
         required: true
         default: '10'
         type: string
+      categories:
+        description: 'Optional pipe-separated Commons event categories; blank uses the two July 2026 defaults'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -32,6 +37,7 @@ jobs:
       COMMONS_FILES_PER_CATEGORY: ${{ inputs.files_per_category }}
       COMMONS_CANARY_MAX_POSTS: ${{ inputs.max_posts }}
       COMMONS_MAX_MEDIA: ${{ inputs.max_media }}
+      COMMONS_CATEGORIES: ${{ inputs.categories }}
       COMMONS_MAX_FILES: '50'
     steps:
       - name: Checkout
