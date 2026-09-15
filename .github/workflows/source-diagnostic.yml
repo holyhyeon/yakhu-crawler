@@ -121,7 +121,9 @@ jobs:
             if (/(여성|여자|여캠|눈나|누나|치어리더|인플루언서|아나운서|여배우|연예인|가수|아이돌|걸그룹|bj|스트리머|댄서|배우|인스타|인스타그램|셀카|직캠|릴스|틱톡|몸매|피지컬|골반|각선미|복근|가슴|폭유|슬랜더)/i.test(value) && /사진|화보|영상|움짤|gif|이미지|촬영|출사|직캠|사진\s*(?:세트|모음)/i.test(value)) return { decision: 'accept', reason: 'visual_target_context' };
             if (value.includes('모델') && !/레이싱\s*모델|여성\s*모델|패션\s*모델|화보\s*모델|비키니\s*모델|맥심\s*모델|피팅\s*모델|모델\s*(?:화보|촬영|사진|출사)/i.test(value)) return { decision: 'review', reason: 'ambiguous_model_context' };
             if (value.includes('배우') && !/성인\s*배우|여배우|화보|인스타|비키니|수영복/i.test(value)) return { decision: 'review', reason: 'ambiguous_actor_context' };
-            if (/(ㅇㅎ|ㅎㅂ|약후|후방|후방주의|야짤)/i.test(titleValue)) return { decision: /인스타|인스타그램|셀카|직캠|릴스|틱톡|사진|화보|영상|움짤|gif|이미지|촬영|출사/i.test(value) ? { decision: 'accept', reason: 'weak_marker_with_visual_context' } : { decision: 'review', reason: 'weak_only' };
+            if (/(ㅇㅎ|ㅎㅂ|약후|후방|후방주의|야짤)/i.test(titleValue)) return /인스타|인스타그램|셀카|직캠|릴스|틱톡|사진|화보|영상|움짤|gif|이미지|촬영|출사/i.test(value)
+              ? { decision: 'accept', reason: 'weak_marker_with_visual_context' }
+              : { decision: 'review', reason: 'weak_only' };
             if (/(여성|여자|여캠|눈나|누나|치어리더|인플루언서|아나운서|여배우|연예인|가수|아이돌|걸그룹|bj|스트리머|댄서|배우|몸매|피지컬|골반|각선미|복근|가슴|폭유|슬랜더|코스프레)/i.test(value)) return { decision: 'review', reason: 'ambiguous_context' };
             return { decision: 'reject', reason: 'no_target_signal' };
           }
