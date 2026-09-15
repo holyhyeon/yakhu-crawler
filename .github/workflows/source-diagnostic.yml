@@ -1,0 +1,229 @@
+name: Source diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Public source to inspect'
+        required: true
+        default: 'inven'
+        type: choice
+        options:
+          - 'inven'
+      board:
+        description: 'Inven board path'
+        required: true
+        default: 'webzine/2097'
+        type: string
+      category:
+        description: 'Inven category'
+        required: true
+        default: '사진'
+        type: string
+      sample_limit:
+        description: 'Maximum signal-matched posts to inspect'
+        required: true
+        default: '30'
+        type: string
+      page_limit:
+        description: 'Recent listing pages to inspect'
+        required: true
+        default: '2'
+        type: string
+      title_signals:
+        description: 'Optional comma-separated extra title signals'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run read-only diagnostic
+        env:
+          DIAG_SOURCE: ${{ inputs.source }}
+          DIAG_BOARD: ${{ inputs.board }}
+          DIAG_CATEGORY: ${{ inputs.category }}
+          DIAG_SAMPLE_LIMIT: ${{ inputs.sample_limit }}
+          DIAG_PAGE_LIMIT: ${{ inputs.page_limit }}
+          DIAG_EXTRA_SIGNALS: ${{ inputs.title_signals }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import {
+            extractBodyText,
+            extractDetailTitle,
+            extractListing,
+            extractMediaUrls,
+          } from './src/sources/inven.mjs';
+
+          const SOURCE_AGENT = 'Mozilla/5.0 (compatible; YakhuArchiveCrawler/0.1; personal archive)';
+          const primarySignals = ['비키니', '수영복', '몸매', '피지컬', '레깅스', '골반', '뒤태', '운동복'];
+          const secondarySignals = ['ㅎㅂ', '후방', '약후', '인스타', '모델', '화보'];
+          const extraSignals = String(process.env.DIAG_EXTRA_SIGNALS || '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+          const sampleLimit = Math.min(30, Math.max(1, Number(process.env.DIAG_SAMPLE_LIMIT || 30)));
+          const pageLimit = Math.min(3, Math.max(1, Number(process.env.DIAG_PAGE_LIMIT || 2)));
+          const board = process.env.DIAG_BOARD || 'webzine/2097';
+          const category = process.env.DIAG_CATEGORY || '사진';
+          const listBase = new URL(`https://www.inven.co.kr/board/${board}`);
+          const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          async function fetchHtml(url, referer) {
+            const response = await fetch(url, {
+              headers: {
+                'user-agent': SOURCE_AGENT,
+                'accept-language': 'ko-KR,ko;q=0.9',
+                referer,
+              },
+              redirect: 'follow',
+              signal: AbortSignal.timeout(15_000),
+            });
+            if (!response.ok) throw new Error(`source_${response.status}`);
+            return response.text();
+          }
+
+          function signalMatches(title) {
+            const value = String(title || '').toLocaleLowerCase('ko-KR');
+            const primary = primarySignals.filter((signal) => value.includes(signal.toLocaleLowerCase('ko-KR')));
+            const secondary = secondarySignals.filter((signal) => value.includes(signal.toLocaleLowerCase('ko-KR')));
+            const extra = extraSignals.filter((signal) => value.includes(signal.toLocaleLowerCase('ko-KR')));
+            return { primary, secondary: [...new Set([...secondary, ...extra])] };
+          }
+
+          // This is a read-only copy of the production textQualityAssessment policy.
+          function quality(title, bodyText) {
+            const titleValue = String(title || '').toLocaleLowerCase('ko-KR');
+            const value = `${title || ''}\n${bodyText || ''}`.toLocaleLowerCase('ko-KR').trim();
+            if (!value) return { decision: 'reject', reason: 'empty_context' };
+            const rules = [
+              [/미성년(?:자)?|청소년|10대|여고생|남고생|초등학생|중학생|고등학생|아동|어린이|유아/i, 'explicit_minor'],
+              [/몰카|도촬|불법\s*촬영|유출|해킹\s*유출|비동의\s*(?:촬영|배포|공유)|리벤지\s*포르노/i, 'explicit_nonconsensual'],
+              [/딥페이크|deepfake|(?:ai|인공지능|생성형\s*ai)\s*(?:생성\s*)?(?:그림|일러스트|이미지|사진|아트)|(?:게임|인게임)\s*(?:캐릭터|스크린샷|화면|일러스트|스킨|원화)|애니(?:메이션)?|만화|웹툰|일러스트|팬아트|콘셉트\s*아트/i, 'non_real_content'],
+              [/(?:^|[\s()[\]{}:])(?:공지|운영\s*(?:안내|규정)|게시판\s*안내)(?:$|[\s()[\]{}:])|광고|협찬|프로모션|스폰서|상품\s*(?:소개|판매)|구매\s*(?:링크|가능)/i, 'advertisement_or_notice'],
+              [/(?:open\s*ai|gpt|llm|언어\s*모델|차세대\s*모델|내부\s*모델|신형\s*모델|소프트웨어\s*모델|제품\s*모델|자동차\s*모델|차량\s*모델|기기\s*모델)/i, 'non_target_context'],
+            ];
+            for (const [pattern, reason] of rules) if (pattern.test(value)) return { decision: 'reject', reason };
+            if (/비키니|수영복|모노키니|란제리|브라렛|시스루|여친룩|파티룩|비치웨어|그라비아|맥심|바디\s*프로필|룩북|치어리더|레이싱\s*모델|피팅\s*모델|여캠|실사\s*(?:사진|인물|여성)|실제\s*인물|여성\s*모델|패션\s*모델|비키니\s*모델|맥심\s*모델/i.test(value)) return { decision: 'accept', reason: 'strong_target_signal' };
+            if (/(여성|여자|여캠|눈나|누나|치어리더|인플루언서|아나운서|여배우|연예인|가수|아이돌|걸그룹|bj|스트리머|댄서|배우|인스타|인스타그램|셀카|직캠|릴스|틱톡|몸매|피지컬|골반|각선미|복근|가슴|폭유|슬랜더)/i.test(value) && /사진|화보|영상|움짤|gif|이미지|촬영|출사|직캠|사진\s*(?:세트|모음)/i.test(value)) return { decision: 'accept', reason: 'visual_target_context' };
+            if (value.includes('모델') && !/레이싱\s*모델|여성\s*모델|패션\s*모델|화보\s*모델|비키니\s*모델|맥심\s*모델|피팅\s*모델|모델\s*(?:화보|촬영|사진|출사)/i.test(value)) return { decision: 'review', reason: 'ambiguous_model_context' };
+            if (value.includes('배우') && !/성인\s*배우|여배우|화보|인스타|비키니|수영복/i.test(value)) return { decision: 'review', reason: 'ambiguous_actor_context' };
+            if (/(ㅇㅎ|ㅎㅂ|약후|후방|후방주의|야짤)/i.test(titleValue)) return { decision: /인스타|인스타그램|셀카|직캠|릴스|틱톡|사진|화보|영상|움짤|gif|이미지|촬영|출사/i.test(value) ? { decision: 'accept', reason: 'weak_marker_with_visual_context' } : { decision: 'review', reason: 'weak_only' };
+            if (/(여성|여자|여캠|눈나|누나|치어리더|인플루언서|아나운서|여배우|연예인|가수|아이돌|걸그룹|bj|스트리머|댄서|배우|몸매|피지컬|골반|각선미|복근|가슴|폭유|슬랜더|코스프레)/i.test(value)) return { decision: 'review', reason: 'ambiguous_context' };
+            return { decision: 'reject', reason: 'no_target_signal' };
+          }
+
+          const raw = new Map();
+          let listFailures = 0;
+          for (let page = 1; page <= pageLimit; page++) {
+            const listUrl = new URL(listBase.href);
+            listUrl.searchParams.set('category', category);
+            listUrl.searchParams.set('vtype', 'pc');
+            if (page > 1) listUrl.searchParams.set('p', String(page));
+            try {
+              const html = await fetchHtml(listUrl.href, listBase.href);
+              for (const candidate of extractListing(html, { board, categoryLabel: '인벤', candidateCap: 200 })) raw.set(candidate.sourcePostId, candidate);
+            } catch (error) {
+              listFailures++;
+              console.error(JSON.stringify({ type: 'list_error', page, error: error instanceof Error ? error.message : String(error) }));
+            }
+            if (page < pageLimit) await delay(250);
+          }
+
+          const primaryCandidates = [];
+          const secondaryCandidates = [];
+          for (const candidate of raw.values()) {
+            const matched = signalMatches(candidate.title);
+            const item = { ...candidate, matchedSignals: matched };
+            if (matched.primary.length) primaryCandidates.push(item);
+            else if (matched.secondary.length) secondaryCandidates.push(item);
+          }
+          const selected = [...primaryCandidates, ...secondaryCandidates].slice(0, sampleLimit);
+          const results = [];
+          for (const candidate of selected) {
+            try {
+              const html = await fetchHtml(candidate.sourceUrl, listBase.href);
+              const title = extractDetailTitle(html);
+              const bodyText = extractBodyText(html);
+              const mediaUrls = extractMediaUrls(html);
+              const gate = quality(title || candidate.title, bodyText);
+              results.push({
+                sourcePostId: candidate.sourcePostId,
+                sourceUrl: candidate.sourceUrl,
+                listingTitle: candidate.title,
+                title: title || candidate.title,
+                bodySummary: bodyText.slice(0, 300),
+                mediaCount: mediaUrls.length,
+                mediaTypes: mediaUrls.map((url) => /\.(?:mp4|webm|mov)(?:$|[?#])/i.test(url) ? 'video' : 'image'),
+                mediaUrls,
+                existing: 'not_checked_no_site_credential',
+                gateDecision: mediaUrls.length ? gate.decision.toUpperCase() : 'UNSUPPORTED',
+                gateReason: mediaUrls.length ? gate.reason : 'media_missing',
+                matchedSignals: candidate.matchedSignals,
+                manualClassification: 'PENDING_MEDIA_REVIEW',
+              });
+            } catch (error) {
+              results.push({
+                sourcePostId: candidate.sourcePostId,
+                sourceUrl: candidate.sourceUrl,
+                listingTitle: candidate.title,
+                existing: 'not_checked_no_site_credential',
+                gateDecision: 'ERROR',
+                gateReason: error instanceof Error ? error.message : String(error),
+                matchedSignals: candidate.matchedSignals,
+                manualClassification: 'PENDING_MEDIA_REVIEW',
+              });
+            }
+            await delay(250);
+          }
+
+          const summary = {
+            source: process.env.DIAG_SOURCE || 'inven',
+            board,
+            category,
+            sampleLimit,
+            pageLimit,
+            primarySignals,
+            secondarySignals,
+            extraSignals,
+            listCandidates: raw.size,
+            primaryCandidates: primaryCandidates.length,
+            secondaryCandidates: secondaryCandidates.length,
+            selected: selected.length,
+            listFailures,
+            detailSuccess: results.filter((row) => row.gateDecision !== 'ERROR').length,
+            detailFailure: results.filter((row) => row.gateDecision === 'ERROR').length,
+            mediaSuccess: results.filter((row) => Number(row.mediaCount) > 0).length,
+            unsupported: results.filter((row) => row.gateDecision === 'UNSUPPORTED').length,
+            errors: results.filter((row) => row.gateDecision === 'ERROR').length + listFailures,
+            ACCEPT: results.filter((row) => row.gateDecision === 'ACCEPT').length,
+            REVIEW: results.filter((row) => row.gateDecision === 'REVIEW').length,
+            REJECT: results.filter((row) => row.gateDecision === 'REJECT').length,
+            existing: 'not_checked_no_site_credential',
+            writeEndpointsCalled: false,
+            results,
+          };
+          await mkdir('diagnostic-output', { recursive: true });
+          await writeFile('diagnostic-output/source-diagnostic-results.json', JSON.stringify(summary, null, 2));
+          console.log(JSON.stringify({ ...summary, results: undefined }));
+          console.log('READ_ONLY_ASSERTION: no Site URL, ingest secret, DB, R2, publish, or mutation endpoint is configured or called.');
+          NODE
+      - name: Upload diagnostic JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-diagnostic-results
+          path: diagnostic-output/source-diagnostic-results.json
+          if-no-files-found: error
