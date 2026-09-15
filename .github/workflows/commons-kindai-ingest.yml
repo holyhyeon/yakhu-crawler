@@ -1,0 +1,52 @@
+name: Commons Kindai manual canary ingest
+
+on:
+  workflow_dispatch:
+    inputs:
+      files_per_category:
+        description: 'Recent Commons files per category (max 25)'
+        required: true
+        default: '25'
+        type: string
+      max_posts:
+        description: 'Named-model grouped posts to ingest (max 15)'
+        required: true
+        default: '15'
+        type: string
+      max_media:
+        description: 'Maximum media per grouped post (max 10)'
+        required: true
+        default: '10'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      YAKHU_SITE_URL: ${{ secrets.YAKHU_SITE_URL }}
+      YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
+      COMMONS_FILES_PER_CATEGORY: ${{ inputs.files_per_category }}
+      COMMONS_CANARY_MAX_POSTS: ${{ inputs.max_posts }}
+      COMMONS_MAX_MEDIA: ${{ inputs.max_media }}
+      COMMONS_MAX_FILES: '50'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Ingest bounded Commons canary
+        run: node src/commons-kindai-ingest.mjs
+      - name: Upload canary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: commons-kindai-ingest
+          path: diagnostic-output/commons-kindai-ingest.json
+          if-no-files-found: error
