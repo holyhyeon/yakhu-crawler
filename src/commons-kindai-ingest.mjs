@@ -2,9 +2,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { DEFAULT_CATEGORIES, collectKindaiCommons } from './sources/commons-kindai.mjs';
 import { textQualityReplay } from './quality-replay.mjs';
 
-const maxPosts = Math.min(15, Math.max(1, Number(process.env.COMMONS_CANARY_MAX_POSTS || 15)));
-const filesPerCategory = Math.min(25, Math.max(1, Number(process.env.COMMONS_FILES_PER_CATEGORY || 25)));
+const maxPosts = Math.min(100, Math.max(1, Number(process.env.COMMONS_CANARY_MAX_POSTS || 15)));
+const filesPerCategory = Math.min(600, Math.max(1, Number(process.env.COMMONS_FILES_PER_CATEGORY || 25)));
 const maxMediaPerPost = Math.min(10, Math.max(1, Number(process.env.COMMONS_MAX_MEDIA || 10)));
+const groupOffset = Math.max(0, Number(process.env.COMMONS_GROUP_OFFSET || 0));
 const categories = String(process.env.COMMONS_CATEGORIES || DEFAULT_CATEGORIES.join('|'))
   .split('|').map((value) => value.trim()).filter(Boolean);
 const siteUrl = String(process.env.YAKHU_SITE_URL || '').trim();
@@ -16,13 +17,13 @@ const collected = await collectKindaiCommons({
   categories,
   filesPerCategory,
   // Collect a small cushion because unknown-person groups are intentionally excluded.
-  maxPosts: Math.min(20, maxPosts + 5),
+  maxPosts: Math.min(250, groupOffset + maxPosts + 20),
   maxMediaPerPost,
 });
 
-const selected = collected.candidates
-  .filter((candidate) => candidate.depictedPerson && candidate.attributionComplete)
-  .slice(0, maxPosts);
+const eligibleCandidates = collected.candidates
+  .filter((candidate) => candidate.depictedPerson && candidate.attributionComplete);
+const selected = eligibleCandidates.slice(groupOffset, groupOffset + maxPosts);
 
 const candidates = selected.map((candidate) => ({
   source: candidate.source,
@@ -113,10 +114,14 @@ const summary = {
   categories,
   filesPerCategory,
   maxPosts,
+  groupOffset,
   maxMediaPerPost,
+  categoryStats: collected.categoryStats,
   rawFiles: collected.metrics.rawFiles,
   uniqueFiles: collected.metrics.uniqueFiles,
   groupedPosts: collected.metrics.groupedPosts,
+  eligibleGroupedPosts: eligibleCandidates.length,
+  remainingEligiblePosts: Math.max(0, eligibleCandidates.length - groupOffset - selected.length),
   selectedNamedPosts: selected.length,
   groupedMedia: selected.reduce((sum, candidate) => sum + candidate.mediaUrls.length, 0),
   results: gateRows,
@@ -143,6 +148,18 @@ await writeFile('diagnostic-output/commons-kindai-ingest.json', JSON.stringify(s
 console.log(JSON.stringify({
   source: summary.source,
   mode: summary.mode,
+  categories: summary.categories,
+  categoryStats: summary.categoryStats,
+  filesPerCategory: summary.filesPerCategory,
+  maxPosts: summary.maxPosts,
+  groupOffset: summary.groupOffset,
+  collection: {
+    rawFiles: summary.rawFiles,
+    uniqueFiles: summary.uniqueFiles,
+    groupedPosts: summary.groupedPosts,
+    eligibleGroupedPosts: summary.eligibleGroupedPosts,
+    remainingEligiblePosts: summary.remainingEligiblePosts,
+  },
   selectedNamedPosts: summary.selectedNamedPosts,
   metrics: summary.metrics,
   results: summary.results.map(({ sourcePostId, depictedPerson, gateDecision, ingestStatus, storedMediaCount }) => ({

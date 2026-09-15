@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       files_per_category:
-        description: 'Recent Commons files per category (max 25)'
+        description: 'Recent Commons files per category (max 600)'
         required: true
         default: '25'
         type: string
       max_posts:
-        description: 'Named-model grouped posts to ingest (max 15)'
+        description: 'Named-model grouped posts to ingest (max 100)'
         required: true
         default: '15'
         type: string
@@ -17,6 +17,11 @@ on:
         description: 'Maximum media per grouped post (max 10)'
         required: true
         default: '10'
+        type: string
+      group_offset:
+        description: 'Number of eligible grouped posts to skip before this bounded batch'
+        required: false
+        default: '0'
         type: string
       categories:
         description: 'Optional pipe-separated Commons event categories; blank uses the two July 2026 defaults'
@@ -36,6 +41,7 @@ jobs:
       YAKHU_INGEST_SECRET: ${{ secrets.YAKHU_INGEST_SECRET }}
       COMMONS_FILES_PER_CATEGORY: ${{ inputs.files_per_category }}
       COMMONS_CANARY_MAX_POSTS: ${{ inputs.max_posts }}
+      COMMONS_GROUP_OFFSET: ${{ inputs.group_offset }}
       COMMONS_MAX_MEDIA: ${{ inputs.max_media }}
       COMMONS_CATEGORIES: ${{ inputs.categories }}
       COMMONS_MAX_FILES: '50'
