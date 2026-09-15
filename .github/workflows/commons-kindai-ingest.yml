@@ -23,6 +23,14 @@ on:
         required: false
         default: '0'
         type: string
+      ingest_mode:
+        description: 'baseline marks the initial inventory as seen; new_only ingests only files first discovered after baseline'
+        required: true
+        default: 'new_only'
+        type: choice
+        options:
+          - new_only
+          - baseline
       categories:
         description: 'Optional pipe-separated Commons event categories; blank uses the two July 2026 defaults'
         required: false
@@ -44,6 +52,7 @@ jobs:
       COMMONS_GROUP_OFFSET: ${{ inputs.group_offset }}
       COMMONS_MAX_MEDIA: ${{ inputs.max_media }}
       COMMONS_CATEGORIES: ${{ inputs.categories }}
+      COMMONS_INGEST_MODE: ${{ inputs.ingest_mode }}
       COMMONS_MAX_FILES: '50'
     steps:
       - name: Checkout
