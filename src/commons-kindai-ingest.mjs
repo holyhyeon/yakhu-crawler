@@ -13,7 +13,28 @@ const siteUrl = String(process.env.YAKHU_SITE_URL || '').trim();
 const secret = String(process.env.YAKHU_INGEST_SECRET || '').trim();
 
 if (!siteUrl || !secret) throw new Error('missing_ingest_configuration');
-if (!['baseline', 'new_only'].includes(ingestMode)) throw new Error('invalid_commons_ingest_mode');
+if (!['baseline', 'new_only', 'cleanup'].includes(ingestMode)) throw new Error('invalid_commons_ingest_mode');
+
+if (ingestMode === 'cleanup') {
+  const cleanupEndpoint = new URL('/api/admin/commons-kindai/cleanup', siteUrl).href;
+  const headers = { authorization: `Bearer ${secret}` };
+  const previewResponse = await fetch(cleanupEndpoint, { headers, signal: AbortSignal.timeout(120_000) });
+  const preview = await previewResponse.json().catch(() => ({}));
+  if (!previewResponse.ok) throw new Error(`site_${previewResponse.status}:${preview.error || 'cleanup_preview_failed'}`);
+  const deleteResponse = await fetch(cleanupEndpoint, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ confirmSource: 'commons_kindai', execute: true }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const deletion = await deleteResponse.json().catch(() => ({}));
+  if (!deleteResponse.ok) throw new Error(`site_${deleteResponse.status}:${deletion.error || 'cleanup_failed'}`);
+  const summary = { source: 'commons_kindai', mode: 'cleanup', preview, deletion, writeEndpointsCalled: true };
+  await mkdir('diagnostic-output', { recursive: true });
+  await writeFile('diagnostic-output/commons-kindai-ingest.json', JSON.stringify(summary, null, 2));
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
 
 const collected = await collectKindaiCommons({
   categories,
